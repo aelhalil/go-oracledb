@@ -42,6 +42,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 
 	"github.com/oracle/go-driver/driver/common"
 	"github.com/oracle/go-driver/driver/ttc/converters"
@@ -229,9 +230,10 @@ func newTTIOacTime() common.Marshallable {
 	return newTTIoac(DtyStz, converters.MaxTimeStampLength)
 }
 
-// newTTIOacJSONDefine creates a define OAC descriptor for JSON values transported as LOBs with prefetch enabled.
-func newTTIOacJSONDefine(columnContext ColumnContext, lobPrefetchSize common.UB4) common.Marshallable {
-	return newTTIOAcDefine(DtyBlob, max_lob_length, columnContext, uacfsald, lobPrefetchSize)
+// newTTIOacJSONDefine creates a define OAC descriptor for JSON values with prefetch enabled.
+func newTTIOacJSONDefine(columnContext ColumnContext, _ common.UB4) common.Marshallable {
+	// for JSON we want to fetch all the doc
+	return newTTIOAcDefine(DtyJSON, max_lob_length, columnContext, uacfsald, math.MaxInt32)
 }
 
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.
