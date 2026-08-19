@@ -41,6 +41,7 @@ package ttc
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/driver/common"
@@ -430,6 +431,60 @@ func TestMarshalKeyValuePairWithName(t *testing.T) {
 			}
 			if !bytes.Equal(got.value, tt.want) {
 				t.Fatalf("%s = %x, want %x", tt.name, got.value, tt.want)
+			}
+		})
+	}
+}
+
+// Tests that newKeywordValuePairWithName accepts protocol limits and rejects oversized fields.
+func TestNewKeywordValuePairWithNameLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		key         string
+		textValue   string
+		binaryValue common.B1Array
+		wantErr     bool
+	}{
+		{
+			name:        "accepts exact byte limits",
+			key:         strings.Repeat("k", maxKPDKVEKeyLength),
+			textValue:   strings.Repeat("v", maxKPDKVEValueLength),
+			binaryValue: bytes.Repeat([]byte{0xab}, maxKPDKVEValueLength),
+		},
+		{
+			name:    "rejects key one byte over limit",
+			key:     strings.Repeat("k", maxKPDKVEKeyLength+1),
+			wantErr: true,
+		},
+		{
+			name:      "rejects text value one byte over limit",
+			textValue: strings.Repeat("v", maxKPDKVEValueLength+1),
+			wantErr:   true,
+		},
+		{
+			name:        "rejects binary value one byte over limit",
+			binaryValue: bytes.Repeat([]byte{0xab}, maxKPDKVEValueLength+1),
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newKeywordValuePairWithName(
+				tt.key, tt.textValue, tt.binaryValue, 0,
+			)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected newKeywordValuePairWithName to fail")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("newKeywordValuePairWithName failed: %v", err)
 			}
 		})
 	}

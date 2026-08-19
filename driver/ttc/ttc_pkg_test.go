@@ -105,6 +105,7 @@ var testCases = []struct {
 	{"TestMarshalCLR", "unitary", false, TestMarshalCLR},
 	{"TestMarshalKeyValue", "unitary", false, TestMarshalKeyValue},
 	{"TestMarshalKeyValuePairWithName", "unitary", false, TestMarshalKeyValuePairWithName},
+	{"TestNewKeywordValuePairWithNameLimits", "unitary", false, TestNewKeywordValuePairWithNameLimits},
 	{"TestFlush", "unitary", false, TestFlush},
 	{"TestUnmarshalUB1", "unitary", false, TestUnmarshalUB1},
 	{"TestUnmarshalUB2", "unitary", false, TestUnmarshalUB2},
