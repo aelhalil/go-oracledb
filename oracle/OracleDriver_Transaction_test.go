@@ -45,6 +45,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestCommit checks that changes are not available to other transactions before
@@ -238,7 +240,7 @@ func TestRollbackThroughContextServerSleep(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected error ORA-01013")
 	}
-	sqlError, ok := err.(SQLError)
+	sqlError, ok := err.(oracleErrors.SQLError)
 	if !ok {
 		t.Fatalf("Error should be SQLError, but was %v", err)
 	}
@@ -318,9 +320,9 @@ func TestRollbackThroughContextCancel(t *testing.T) {
 	if err == nil {
 		t.Errorf("Transaction should be closed, expected error")
 	}
-	if sqlErr, ok := err.(SQLError); ok {
-		if sqlErr.ErrorCode() != string(NotInTransaction) {
-			t.Errorf("Wrong error, expected %s but was %s", NotInTransaction, sqlErr.ErrorCode())
+	if sqlErr, ok := err.(oracleErrors.SQLError); ok {
+		if sqlErr.ErrorCode() != string(oracleErrors.NotInTransaction) {
+			t.Errorf("Wrong error, expected %s but was %s", oracleErrors.NotInTransaction, sqlErr.ErrorCode())
 		}
 	}
 }

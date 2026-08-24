@@ -45,21 +45,24 @@ import (
 	"log/slog"
 	"time"
 
-	drv "github.com/oracle/go-oracledb/v26/driver"
-	"github.com/oracle/go-oracledb/v26/driver/common"
-	"github.com/oracle/go-oracledb/v26/driver/network/naming"
-	"github.com/oracle/go-oracledb/v26/driver/network/session"
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	drv "github.com/oracle/go-oracledb/v26/internal/driver"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
+	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-type ConnInstantiatorFactory func(config *common.OracleDriverConfig, ns *session.NetworkSession) (common.ConnectionInstantiator, error)
-type ConnCreator func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (*session.NetworkSession, error)
+type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession) (driverCommon.ConnectionInstantiator, error)
+type ConnCreator func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error)
 
 // connector implements the database/sql/driver.connector interface for Oracle databases,
 // allowing connections to Oracle via Go's standard database/sql package.
 type connector struct {
 	driver                  driver.Driver
 	config                  *naming.ParsedConfig
-	connectorConfig         *common.OracleDriverConfig
+	connectorConfig         *oracleconfig.OracleDriverConfig
 	connCreator             ConnCreator
 	connInstantiatorFactory ConnInstantiatorFactory
 }
@@ -69,16 +72,16 @@ type oracleConnector = connector
 
 // NewOracleConnector returns a new OracleConnector using the provided ParsedConfig.
 // This is the main entry point for database/sql to acquire an Oracle database Connector.
-func buildOracleConnector(driver driver.Driver, cfg *naming.ParsedConfig, drvConfig *common.OracleDriverConfig) driver.Connector {
+func buildOracleConnector(driver driver.Driver, cfg *naming.ParsedConfig, drvConfig *oracleconfig.OracleDriverConfig) driver.Connector {
 	// this should never return an error, both functions are being set to not nil values
 	connector, _ := newOracleConnector(cfg, drvConfig, session.ConnectToOptionWithConnectionID, drv.GetConnectionInstantiator)
 	return connector
 }
 
 // newOracleConnector private creator of OracleConnector for testing, returns an error if one of the functions is nil
-func newOracleConnector(cfg *naming.ParsedConfig, drvConfig *common.OracleDriverConfig, connCreator ConnCreator, connInstantiatorFactory ConnInstantiatorFactory) (driver.Connector, error) {
+func newOracleConnector(cfg *naming.ParsedConfig, drvConfig *oracleconfig.OracleDriverConfig, connCreator ConnCreator, connInstantiatorFactory ConnInstantiatorFactory) (driver.Connector, error) {
 	if connCreator == nil || connInstantiatorFactory == nil {
-		return nil, common.NewOracleError(common.InternalError, nil)
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	return &connector{
 		config:                  cfg,
@@ -92,7 +95,7 @@ func newOracleConnector(cfg *naming.ParsedConfig, drvConfig *common.OracleDriver
 // It opens a wire-level Oracle connection, performs authentication, and configures the session.
 func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	var err error
-	var ns *session.NetworkSession
+	var ns driverCommon.NetworkSession
 	var savedErr error                       // last error raised during attempt loop
 	var savedOption *naming.ConnectionOption // last option tried during attempt loop
 	isNsConnected := false
@@ -106,7 +109,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if !iterator.HasNext() {
 		// No attempts means the connect string (or parsed config) didn't yield any usable
 		// ADDRESS entries, so there is nothing we can connect to.
-		err = common.NewOracleError(common.ConnectFailed, errors.New("no connection attempts available"))
+		err = common.NewOracleError(oracleErrors.ConnectFailed, errors.New("no connection attempts available"))
 		return nil, localizationService.LocalizeError(err)
 	}
 
@@ -125,11 +128,11 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	for iterator.HasNext() {
 		option := iterator.Next()
 		if option == nil {
-			err = common.NewOracleError(common.ConnectFailed, ctx.Err())
+			err = common.NewOracleError(oracleErrors.ConnectFailed, ctx.Err())
 			return nil, localizationService.LocalizeError(err)
 		}
 		if err := ctx.Err(); err != nil {
-			e := common.NewOracleError(common.ConnectFailed, err)
+			e := common.NewOracleError(oracleErrors.ConnectFailed, err)
 			return nil, localizationService.LocalizeError(e)
 		}
 		tctxToBeUsed = ctx
@@ -138,18 +141,19 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 				"option",
 				option)
 		}
-		if option.Description != nil && option.Description.ConnectTimeout > 0 {
+		desc := option.Description
+		if desc != nil && desc.ConnectTimeout > 0 {
 			// take precedence over the passed context if it is a shorter timeout
 			tctxToBeUsed, tCancelToBeUsed =
-				context.WithTimeoutCause(tctxToBeUsed, time.Duration(option.Description.ConnectTimeout)*time.Millisecond,
-					common.NewCtxTimeoutCauseError("ConnectTimeout", uint(option.Description.ConnectTimeout),
+				context.WithTimeoutCause(tctxToBeUsed, time.Duration(desc.ConnectTimeout)*time.Millisecond,
+					common.NewCtxTimeoutCauseError("ConnectTimeout", uint(desc.ConnectTimeout),
 						sessionUid))
 			defer tCancelToBeUsed()
 		}
 		ns, err = c.connCreator(tctxToBeUsed, option, sessionUid)
 		if err == nil {
 			// the network session has successfully connected, it should be
-			// disconnected the the connection establishment fails.
+			// disconnected the connection establishment fails.
 			isNsConnected = true
 			savedErr = nil
 			savedOption = nil
@@ -162,12 +166,12 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if savedErr != nil {
 		if ctxTErr, ok := savedErr.(common.CtxTimeoutCauseError); ok {
 			//"%s Timeout of %d for %s.(CONNECTION_ID=%s)")
-			localized := common.NewOracleError(common.ConnectFailed,
-				common.NewOracleError(common.ConnectTimeout, nil, ctxTErr.GetSource(),
+			localized := common.NewOracleError(oracleErrors.ConnectFailed,
+				common.NewOracleError(oracleErrors.ConnectTimeout, nil, ctxTErr.GetSource(),
 					ctxTErr.GetValue(), savedOption.Address.String(), ctxTErr.GetEmitterID()))
 			return nil, localizationService.LocalizeError(localized)
 		}
-		e := common.NewOracleError(common.ConnectFailed, savedErr)
+		e := common.NewOracleError(oracleErrors.ConnectFailed, savedErr)
 		return nil, localizationService.LocalizeError(e)
 	}
 
@@ -175,7 +179,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	connInstantiator, err := c.connInstantiatorFactory(c.connectorConfig, ns)
 	if err != nil {
-		e := common.NewOracleError(common.ConnectFailed, err)
+		e := common.NewOracleError(oracleErrors.ConnectFailed, err)
 		return nil, localizationService.LocalizeError(e)
 	}
 	connection, err := connInstantiator.GetConnection(ctx)

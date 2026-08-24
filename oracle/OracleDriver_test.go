@@ -45,6 +45,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestDriver_SimpleConnection executes a simple connection.
@@ -486,7 +488,7 @@ func TestDriver_InsertForeignKeyViolation(t *testing.T) {
 	}
 
 	errText := err.Error()
-	if !strings.Contains(errText, string(ForeignKeyViolation)) {
+	if !strings.Contains(errText, string(oracleErrors.ForeignKeyViolation)) {
 		t.Fatalf("expected ORA-02291 foreign key violation, got: %v", err)
 	}
 	if insertedChildID != 0 {

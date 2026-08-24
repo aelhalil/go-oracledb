@@ -66,6 +66,23 @@ var testCases = []struct {
 	{"TestDriver_ConfigurationWithConnectorBasic", "functional", true, TestDriver_ConfigurationWithConnectorBasic},
 	{"TestDriver_ConfigurationWithConnectorWithEnvOverwrite", "functional", true, TestDriver_ConfigurationWithConnectorWithEnvOverwrite},
 	{"TestDriver_ConfigurationWithConnectorWithFlagOverwrite", "functional", true, TestDriver_ConfigurationWithConnectorWithFlagOverwrite},
+	{"TestConfiguration_AssignFromEmptyMap", "unitary", false, TestConfiguration_AssignFromEmptyMap},
+	{"TestConfiguration_AssignFromMapUnknownKey", "unitary", false, TestConfiguration_AssignFromMapUnknownKey},
+	{"TestConfiguration_AssignFromMap", "unitary", false, TestConfiguration_AssignFromMap},
+	{"TestConfiguration_AssignFromMapValidatedIntString", "unitary", false, TestConfiguration_AssignFromMapValidatedIntString},
+	{"TestConfiguration_AssignFromEnv", "unitary", true, TestConfiguration_AssignFromEnv},
+	{"TestConfiguration_AssignFromEnvValidatedIntString", "unitary", true, TestConfiguration_AssignFromEnvValidatedIntString},
+	{"TestConfiguration_AssignFromEmptyFlags", "unitary", false, TestConfiguration_AssignFromEmptyFlags},
+	{"TestConfiguration_Clone", "unitary", false, TestConfiguration_Clone},
+	{"TestConfiguration_DefaultClientLanguageIsLanguageTag", "unitary", false, TestConfiguration_DefaultClientLanguageIsLanguageTag},
+	{"TestConfiguration_AssignFromMapClientLanguageTag", "unitary", false, TestConfiguration_AssignFromMapClientLanguageTag},
+	{"TestConfiguration_AssignFromEnvClientLanguageTag", "unitary", true, TestConfiguration_AssignFromEnvClientLanguageTag},
+	{"TestConfiguration_toNSConnectionParameters", "unitary", false, TestConfiguration_toNSConnectionParameters},
+	{"TestConfiguration_InitLoggingWithConfigFileDestination", "unitary", false, TestConfiguration_InitLoggingWithConfigFileDestination},
+	{"TestEnquoteLiteral", "unitary", false, TestEnquoteLiteral},
+	{"TestEnquoteNCharLiteral", "unitary", false, TestEnquoteNCharLiteral},
+	{"TestIsSimpleIdentifier", "unitary", false, TestIsSimpleIdentifier},
+	{"TestEnquoteIdentifier", "unitary", false, TestEnquoteIdentifier},
 	{"TestDriver_ConfigurationWithCredentialsWithDsnNegative", "unitary", false, TestDriver_ConfigurationWithCredentialsWithDsnNegative},
 	{"TestDriver_ConfigurationLogging", "unitary", false, TestDriver_ConfigurationLogging},
 	{"TestDriver_OpenConnectorUsesNSParamOverConfig", "unitary", false, TestDriver_OpenConnectorUsesNSParamOverConfig},
@@ -558,7 +575,6 @@ func InitConfig() error {
 	flag.StringVar(&configName, "driver.config.name", "", "testing config name")
 
 	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
-
 	if !flag.Parsed() {
 		flag.Parse()
 	}

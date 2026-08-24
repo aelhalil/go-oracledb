@@ -42,6 +42,8 @@ import (
 	"database/sql"
 	"fmt"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 func TestServerError(t *testing.T) {
@@ -63,7 +65,7 @@ func TestServerError(t *testing.T) {
 		}
 		defer db.Close()
 		err = db.Ping()
-		checkErrorRaised(t, err, ConnectFailed, InvalidServiceName)
+		checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.InvalidServiceName)
 	})
 
 	t.Run("TestServerError_ORA-12520", func(t *testing.T) {
@@ -80,7 +82,7 @@ func TestServerError(t *testing.T) {
 		}
 		defer db.Close()
 		err = db.Ping()
-		checkErrorRaised(t, err, ConnectFailed, NoAvailableHandler) // ORA-12520
+		checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.NoAvailableHandler) // ORA-12520
 	})
 	t.Run("TestServerError_ORA-12521", func(t *testing.T) {
 
@@ -94,7 +96,7 @@ func TestServerError(t *testing.T) {
 		}
 		defer db.Close()
 		err = db.Ping()
-		checkErrorRaised(t, err, ConnectFailed, UnknownInstance) // ORA-12521
+		checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.UnknownInstance) // ORA-12521
 	})
 
 	t.Run("TestServerError_ORA-12505", func(t *testing.T) {
@@ -110,7 +112,7 @@ func TestServerError(t *testing.T) {
 		}
 		defer db.Close()
 		err = db.Ping()
-		checkErrorRaised(t, err, ConnectFailed, InvalidSID) // ORA-12505
+		checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.InvalidSID) // ORA-12505
 	})
 	t.Run("TestServerError_ORA_12541", func(t *testing.T) {
 		wrongPortCfg := TestingConfig.Clone()
@@ -123,6 +125,6 @@ func TestServerError(t *testing.T) {
 		}
 		defer db.Close()
 		err = db.Ping()
-		checkErrorRaised(t, err, ConnectFailed, NoListenerAvailable) // ORA-12541
+		checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.NoListenerAvailable) // ORA-12541
 	})
 }

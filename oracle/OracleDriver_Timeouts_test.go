@@ -43,6 +43,8 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // ************************** NOTE ************************** //
@@ -104,7 +106,7 @@ func TestTimeoutConnectWithTransportConnectTimeout(t *testing.T) {
 		t.Fatalf("Expected timeout error, but got no error")
 	}
 	t.Logf("transport connect tm error received: [%v]", err.Error())
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 	checkAcceptableTimeShift(t, 5*time.Second, start, stop)
 
 }
@@ -152,7 +154,7 @@ func TestTimeoutConnectWithTransportConnectTimeoutAndContext(t *testing.T) {
 	t.Logf("transport connect tm error received after [%v]ms: [%v]",
 		stop.Sub(start).Milliseconds(), err.Error())
 
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 	checkAcceptableTimeShift(t, 5*time.Second, start, stop)
 }
 
@@ -199,7 +201,7 @@ func TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater(t *testing.T
 
 	t.Logf("transport connect tm error received: [%v]", err.Error())
 
-	checkErrorRaised(t, err, ConnectFailed, CtxTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.CtxTimeout)
 	checkAcceptableTimeShift(t, 5*time.Second, start, stop)
 }
 
@@ -239,7 +241,7 @@ func TestTimeoutConnectWithRecvTimeout(t *testing.T) {
 
 	t.Logf("recv_timeout connect tm error received: [%v]", err.Error())
 
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 	checkAcceptableTimeShift(t, 5*time.Second, start, stop)
 }
 
@@ -279,7 +281,7 @@ func TestTimeoutConnectWithConnectTimeout(t *testing.T) {
 
 	t.Logf("connect_timeout connect tm error received: [%v]", err.Error())
 
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 	checkAcceptableTimeShift(t, 5*time.Second, start, stop)
 }
 
@@ -324,7 +326,7 @@ func TestTimeoutConnectWithRecvConnectTimeoutAndContext(t *testing.T) {
 
 	t.Logf("recv_timeout/ctx connect tm error received: [%v]", err.Error())
 
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 
 	checkAcceptableTimeShift(t, 5*time.Second, start, stop)
 }
@@ -370,7 +372,7 @@ func TestTimeoutConnectWithRecvConnectTimeoutAndContextGreater(t *testing.T) {
 
 	t.Logf("ctx connect tm error received: [%v]", err.Error())
 
-	checkErrorRaised(t, err, ConnectFailed, CtxTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.CtxTimeout)
 	checkAcceptableTimeShift(t, 5*time.Second, start, stop)
 }
 
@@ -417,7 +419,7 @@ func TestTimeoutConnectTimeoutPrecedence1(t *testing.T) {
 
 	t.Logf("TestTimeoutConnectTimeoutPrecedence1 error received: [%v]", err.Error())
 
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 	checkAcceptableTimeShift(t, 2*time.Second, start, stop)
 
 }
@@ -465,7 +467,7 @@ func TestTimeoutConnectTimeoutPrecedence2(t *testing.T) {
 
 	t.Logf("TestTimeoutConnectTimeoutPrecedence2 error received: [%v]", err.Error())
 
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 	checkAcceptableTimeShift(t, 2*time.Second, start, stop)
 
 }
@@ -511,7 +513,7 @@ func TestTimeoutConnectTimeoutPrecedence3(t *testing.T) {
 		t.Fatalf("Expected timeout error, but got no error")
 	}
 	t.Logf("TestTimeoutConnectTimeoutPrecedence3 error received: [%v]", err.Error())
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 	checkAcceptableTimeShift(t, 2*time.Second, start, stop)
 
 }
@@ -556,6 +558,6 @@ func TestTimeoutConnectTimeoutPrecedence4(t *testing.T) {
 	}
 
 	t.Logf("TestTimeoutConnectTimeoutPrecedence4 error received: [%v]", err.Error())
-	checkErrorRaised(t, err, ConnectFailed, ConnectTimeout)
+	checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.ConnectTimeout)
 	checkAcceptableTimeShift(t, 2*time.Second, start, stop)
 }
