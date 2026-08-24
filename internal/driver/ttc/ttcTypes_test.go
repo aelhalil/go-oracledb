@@ -388,7 +388,7 @@ func TestMarshalKeyValuePairWithName(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Native, 1024)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Native, 1024)
 
 	wantKey := common.StringToB1Array("ORCL_XS_AUTHZ_CONTEXT")
 	wantText := common.StringToB1Array("Hello, World!")
