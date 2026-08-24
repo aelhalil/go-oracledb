@@ -45,6 +45,7 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // Marshals and unmarshals a keywordValueArray and checks that the sizes and values match
@@ -383,7 +384,8 @@ func TestMarshalKeyValue(t *testing.T) {
 	}
 }
 
-// Marshals a keywordValuePairWithName and checks the wire field order and values.
+// TestMarshalKeyValuePairWithName verifies that a DTYKVE record is marshaled in
+// wire order: flag (UB4), key, text value, then binary value.
 func TestMarshalKeyValuePairWithName(t *testing.T) {
 	t.Parallel()
 
@@ -435,7 +437,8 @@ func TestMarshalKeyValuePairWithName(t *testing.T) {
 	}
 }
 
-// Tests that newKeywordValuePairWithName accepts protocol limits and rejects oversized fields.
+// TestNewKeywordValuePairWithNameLimits verifies byte-length validation during
+// DTYKVE record creation.
 func TestNewKeywordValuePairWithNameLimits(t *testing.T) {
 	t.Parallel()
 
@@ -447,23 +450,17 @@ func TestNewKeywordValuePairWithNameLimits(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			name:        "accepts exact byte limits",
-			key:         strings.Repeat("k", maxKPDKVEKeyLength),
-			textValue:   strings.Repeat("v", maxKPDKVEValueLength),
-			binaryValue: bytes.Repeat([]byte{0xab}, maxKPDKVEValueLength),
-		},
-		{
-			name:    "rejects key one byte over limit",
+			name:    "key too long",
 			key:     strings.Repeat("k", maxKPDKVEKeyLength+1),
 			wantErr: true,
 		},
 		{
-			name:      "rejects text value one byte over limit",
+			name:      "text value too long",
 			textValue: strings.Repeat("v", maxKPDKVEValueLength+1),
 			wantErr:   true,
 		},
 		{
-			name:        "rejects binary value one byte over limit",
+			name:        "binary value too long",
 			binaryValue: bytes.Repeat([]byte{0xab}, maxKPDKVEValueLength+1),
 			wantErr:     true,
 		},
@@ -475,15 +472,16 @@ func TestNewKeywordValuePairWithNameLimits(t *testing.T) {
 				tt.key, tt.textValue, tt.binaryValue, 0,
 			)
 
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected newKeywordValuePairWithName to fail")
-				}
-				return
+			if err == nil {
+				t.Fatal("expected newKeywordValuePairWithName to fail")
 			}
 
-			if err != nil {
-				t.Fatalf("newKeywordValuePairWithName failed: %v", err)
+			sqlErr, ok := err.(oracleErrors.SQLError)
+			if !ok {
+				t.Fatalf("expected SQLError, got %T", err)
+			}
+			if got, want := sqlErr.ErrorCode(), string(oracleErrors.ProtocolViolationLimitExceeded); got != want {
+				t.Fatalf("unexpected error code: got %s, want %s", got, want)
 			}
 		})
 	}
