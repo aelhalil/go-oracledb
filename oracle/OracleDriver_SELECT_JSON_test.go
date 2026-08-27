@@ -47,7 +47,7 @@ import (
 	"strings"
 	"testing"
 
-	ojson "github.com/oracle/go-driver/oracle/json"
+	ojson "github.com/oracle/go-oracledb/v26/oracle/json"
 )
 
 // TestDriver_Table_Select_JSON

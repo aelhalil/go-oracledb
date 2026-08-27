@@ -18,9 +18,9 @@ image : os/oraclelinux:8
 variables:
   GIT_STRATEGY: fetch
   GIT_DEPTH: 1
-  GOLANG_VERSION: 1.26.5
+  GOLANG_VERSION: 1.26.6
   GOPATH: $CI_PROJECT_DIR/.go
-  ORACLE_DRIVER_MODULE: "github.com/oracle/go-driver/oracle"
+  ORACLE_DRIVER_MODULE: "github.com/oracle/go-oracledb/v26/oracle"
   CI_DEBUG_SERVICES: "false"
   SCHEDULED_CONFIG: "pipeline_test"
   RUN_DESCRIPTION: $CI_PIPELINE_SCHEDULE_DESCRIPTION

@@ -42,6 +42,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestQuerySystemTableWithoutPrivilege_NegativeCase validates that querying a system table
@@ -68,12 +70,12 @@ func TestQuerySystemTableWithoutPrivilege_NegativeCase(t *testing.T) {
 
 	// Check for one of the expected error codes
 	errMsg := err.Error()
-	hasExpectedError := strings.Contains(errMsg, string(TableOrViewNotFound)) ||
-		strings.Contains(errMsg, string(InsufficientPrivilege)) ||
-		strings.Contains(errMsg, string(MissingReadPrivilege))
+	hasExpectedError := strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) ||
+		strings.Contains(errMsg, string(oracleErrors.InsufficientPrivilege)) ||
+		strings.Contains(errMsg, string(oracleErrors.MissingReadPrivilege))
 
 	if !hasExpectedError {
-		t.Errorf("expected %s, %s, or %s, got: %v", TableOrViewNotFound, InsufficientPrivilege, MissingReadPrivilege, err)
+		t.Errorf("expected %s, %s, or %s, got: %v", oracleErrors.TableOrViewNotFound, oracleErrors.InsufficientPrivilege, oracleErrors.MissingReadPrivilege, err)
 	}
 	t.Logf("correctly received error: %v", err)
 }
@@ -144,7 +146,7 @@ func TestQueryDictionaryViewWithoutPrivilege_NegativeCase(t *testing.T) {
 
 	// Check for privilege-related error
 	errMsg := err.Error()
-	hasPrivilegeError := strings.Contains(errMsg, string(InsufficientPrivilege))
+	hasPrivilegeError := strings.Contains(errMsg, string(oracleErrors.InsufficientPrivilege))
 
 	if !hasPrivilegeError {
 		t.Logf("received error (may indicate privilege restriction): %v", err)

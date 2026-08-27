@@ -43,33 +43,35 @@ import (
 	"database/sql/driver"
 	"fmt"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/ttc/oson"
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/oson"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // JSONOption controls JSON materialization behavior.
-type JSONOption = common.JSONOption
+type JSONOption = drvCommon.JSONOption
 
 const (
 	// JSONOptDefault returns JSON numbers as float64 when materializing values.
-	JSONOptDefault JSONOption = common.JSONOptDefault
+	JSONOptDefault JSONOption = drvCommon.JSONOptDefault
 	// JSONOptNumberAsString returns JSON numbers as json.Number.
-	JSONOptNumberAsString JSONOption = common.JSONOptNumberAsString
+	JSONOptNumberAsString JSONOption = drvCommon.JSONOptNumberAsString
 )
 
 // JSONNumber is the string representation of a JSON number.
-type Number = common.JSONNumber
+type Number = drvCommon.JSONNumber
 
 // JSONKind identifies the high-level JSON value category.
-type JSONKind = common.Kind
+type JSONKind = drvCommon.Kind
 
 const (
 	// JSONObjectKind represents a JSON object.
-	JSONObjectKind JSONKind = common.KindObject
+	JSONObjectKind JSONKind = drvCommon.KindObject
 	// JSONArrayKind represents a JSON array.
-	JSONArrayKind JSONKind = common.KindArray
+	JSONArrayKind JSONKind = drvCommon.KindArray
 	// JSONScalarKind represents a JSON scalar.
-	JSONScalarKind JSONKind = common.KindScalar
+	JSONScalarKind JSONKind = drvCommon.KindScalar
 )
 
 // JSONString is the bind-facing wrapper for JSON text.
@@ -106,13 +108,13 @@ func (jz JSONValue) Value() (driver.Value, error) {
 // JSON is the primary public container for Oracle JSON values.
 type JSON struct {
 	// node provides access to the underlying JSON representation.
-	node common.JSONNode
+	node drvCommon.JSONNode
 }
 
 // Scan implements sql.Scanner.
 func (jz *JSON) Scan(src any) error {
 	if jz == nil {
-		return common.NewOracleError(common.JSONNilReceiver, nil, "Scan")
+		return common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Scan")
 	}
 	switch value := src.(type) {
 	case []byte:
@@ -127,16 +129,16 @@ func (jz *JSON) Scan(src any) error {
 			*jz = JSON{node: node}
 			return nil
 		}
-		return common.NewOracleError(common.OsonParsingError, nil, "oracle/json text scan")
+		return common.NewOracleError(oracleErrors.OsonParsingError, nil, "oracle/json text scan")
 	default:
-		return common.NewOracleError(common.JSONScanTypeUnsupportedError, nil, fmt.Sprintf("%T", src))
+		return common.NewOracleError(oracleErrors.JSONScanTypeUnsupportedError, nil, fmt.Sprintf("%T", src))
 	}
 }
 
 // Value implements driver.Valuer.
 func (jz JSON) Value() (driver.Value, error) {
 	if jz.node == nil {
-		return nil, common.NewOracleError(common.JSONNilReceiver, nil, "Value")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Value")
 	}
 
 	node, err := jz.node.GetValue(JSONOptNumberAsString)
@@ -151,7 +153,7 @@ func (jz JSON) Value() (driver.Value, error) {
 // Kind reports the high-level JSON value category.
 func (jz JSON) Kind() (JSONKind, error) {
 	if jz.node == nil {
-		return 0, common.NewOracleError(common.JSONNilReceiver, nil, "Kind")
+		return 0, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Kind")
 	}
 
 	return jz.node.Kind(), nil
@@ -164,13 +166,13 @@ func (jz JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
 		return JSONObject{}, err
 	}
 	if kind != JSONObjectKind {
-		return JSONObject{}, common.NewOracleError(common.JSONAccessError, nil, "object")
+		return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "object")
 	}
 
-	if obj, ok := jz.node.(common.JSONObjectNode); ok {
+	if obj, ok := jz.node.(drvCommon.JSONObjectNode); ok {
 		return JSONObject{node: obj, opts: opts}, nil
 	}
-	return JSONObject{}, common.NewOracleError(common.JSONAccessError, nil, "object")
+	return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "object")
 }
 
 // GetJSONArray returns jz as a JSON array.
@@ -180,13 +182,13 @@ func (jz JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
 		return JSONArray{}, err
 	}
 	if kind != JSONArrayKind {
-		return JSONArray{}, common.NewOracleError(common.JSONAccessError, nil, "array")
+		return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "array")
 	}
 
-	if arr, ok := jz.node.(common.JSONArrayNode); ok {
+	if arr, ok := jz.node.(drvCommon.JSONArrayNode); ok {
 		return JSONArray{node: arr, opts: opts}, nil
 	}
-	return JSONArray{}, common.NewOracleError(common.JSONAccessError, nil, "array")
+	return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "array")
 }
 
 // GetJSONScalar returns jz as a JSON scalar.
@@ -196,18 +198,18 @@ func (jz JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 		return JSONScalar{}, err
 	}
 	if kind != JSONScalarKind {
-		return JSONScalar{}, common.NewOracleError(common.JSONAccessError, nil, "scalar")
+		return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "scalar")
 	}
-	if scalar, ok := jz.node.(common.JSONScalarNode); ok {
+	if scalar, ok := jz.node.(drvCommon.JSONScalarNode); ok {
 		return JSONScalar{node: scalar, opts: opts}, nil
 	}
-	return JSONScalar{}, common.NewOracleError(common.JSONAccessError, nil, "scalar")
+	return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "scalar")
 }
 
 // GetValue materializes the JSON value with the supplied options.
 func (jz JSON) GetValue(opts JSONOption) (any, error) {
 	if jz.node == nil {
-		return nil, common.NewOracleError(common.JSONNilReceiver, nil, "GetValue")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
 	}
 	return jz.node.GetValue(opts)
 }
@@ -228,7 +230,7 @@ func (jz JSON) String() string {
 // StringWithOption returns the JSON text form using the supplied options.
 func (jz JSON) StringWithOption(opts JSONOption) (string, error) {
 	if jz.node == nil {
-		return "", common.NewOracleError(common.JSONNilReceiver, nil, "StringWithOption")
+		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "StringWithOption")
 	}
 	return jz.node.StringWithOption(opts)
 }
@@ -236,7 +238,7 @@ func (jz JSON) StringWithOption(opts JSONOption) (string, error) {
 // JSONObject is a public JSON object wrapper.
 type JSONObject struct {
 	// node provides access to the underlying JSON object representation.
-	node common.JSONObjectNode
+	node drvCommon.JSONObjectNode
 	// opts controls how values returned from this object are materialized.
 	opts JSONOption
 }
@@ -252,7 +254,7 @@ func (obj JSONObject) Len() int {
 // GetValue materializes the object as a Go map.
 func (obj JSONObject) GetValue() (map[string]any, error) {
 	if obj.node == nil {
-		return nil, common.NewOracleError(common.JSONNilReceiver, nil, "GetValue")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
 	}
 	return obj.node.Value(obj.opts)
 }
@@ -302,7 +304,7 @@ func (obj JSONObject) String() string {
 // JSONArray is a public JSON array wrapper.
 type JSONArray struct {
 	// node provides access to the underlying JSON array representation.
-	node common.JSONArrayNode
+	node drvCommon.JSONArrayNode
 	// opts controls how values returned from this array are materialized.
 	opts JSONOption
 }
@@ -318,7 +320,7 @@ func (arr JSONArray) Len() int {
 // GetValue materializes the array as a Go slice.
 func (arr JSONArray) GetValue() ([]any, error) {
 	if arr.node == nil {
-		return nil, common.NewOracleError(common.JSONNilReceiver, nil, "GetValue")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
 	}
 	return arr.node.Value(arr.opts)
 }
@@ -326,12 +328,12 @@ func (arr JSONArray) GetValue() ([]any, error) {
 // Get returns the child JSON value at i.
 func (arr JSONArray) Get(i int) (JSON, error) {
 	if arr.node == nil {
-		return JSON{}, common.NewOracleError(common.JSONNilReceiver, nil, "Get")
+		return JSON{}, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Get")
 	}
 
 	node, ok := arr.node.Get(i)
 	if !ok {
-		return JSON{}, common.NewOracleError(common.JSONArrayIndexOutOfRangeError, nil, i)
+		return JSON{}, common.NewOracleError(oracleErrors.JSONArrayIndexOutOfRangeError, nil, i)
 	}
 	return JSON{node: node}, nil
 }
@@ -351,7 +353,7 @@ func (arr JSONArray) String() string {
 // JSONScalar is a public JSON scalar wrapper.
 type JSONScalar struct {
 	// node provides access to the underlying JSON scalar representation.
-	node common.JSONScalarNode
+	node drvCommon.JSONScalarNode
 	// opts controls how this scalar is materialized.
 	opts JSONOption
 }
@@ -359,7 +361,7 @@ type JSONScalar struct {
 // GetValue materializes the scalar value.
 func (scalar JSONScalar) GetValue() (any, error) {
 	if scalar.node == nil {
-		return nil, common.NewOracleError(common.JSONNilReceiver, nil, "GetValue")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
 	}
 	return scalar.node.Value(scalar.opts)
 }

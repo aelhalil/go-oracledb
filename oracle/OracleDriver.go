@@ -46,14 +46,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/oracle/go-driver/driver/common"
-	"github.com/oracle/go-driver/driver/network/naming"
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // Driver is exported to make the driver directly accessible.
 // In general the driver is used via the database/sql package.
 type Driver struct {
-	connectorConfig *OracleDriverConfig
+	connectorConfig *oracleconfig.OracleDriverConfig
 }
 
 var oracleDriver = NewDriver()
@@ -79,24 +81,24 @@ func NewDriver() *Driver {
 
 // NewDriverWithConfig creates a new OracleDriver instance for use with database/sql
 // with specific OracleDriverConfig
-func NewDriverWithConfig(cfg *OracleDriverConfig) *Driver {
+func NewDriverWithConfig(cfg *oracleconfig.OracleDriverConfig) *Driver {
 	return &Driver{connectorConfig: cfg}
 }
 
 // NewOracleDriverConfig creates a new driver configuration.
-func NewOracleDriverConfig() *OracleDriverConfig {
-	return common.NewOracleDriverConfig()
+func NewOracleDriverConfig() *oracleconfig.OracleDriverConfig {
+	return oracleconfig.NewOracleDriverConfig()
 }
 
 // NewOracleLoggingConfig creates a new driver logging configuration.
-func NewOracleLoggingConfig() *OracleLoggingConfig {
-	return common.NewOracleLoggingConfig()
+func NewOracleLoggingConfig() *oracleconfig.OracleLoggingConfig {
+	return oracleconfig.NewOracleLoggingConfig()
 }
 
 // ApplyDriverLoggingConfig applies the configuration to this driver
 // Logging configuration is also applied
 // config must not be nil.
-func (drv *Driver) ApplyDriverLoggingConfig(config *OracleLoggingConfig) {
+func (drv *Driver) ApplyDriverLoggingConfig(config *oracleconfig.OracleLoggingConfig) {
 	if config != nil {
 		common.InitLoggingWithConfig(config)
 	}
@@ -111,7 +113,7 @@ func (drv *Driver) ApplyDriverLoggingConfig(config *OracleLoggingConfig) {
 //
 //	. A new connector
 //	. En error if creation has failed
-func NewOracleConnector(config *OracleDriverConfig) (driver.Connector, error) {
+func NewOracleConnector(config *oracleconfig.OracleDriverConfig) (driver.Connector, error) {
 	drv := NewDriverWithConfig(config)
 	var connector driver.Connector
 	var err error
@@ -145,10 +147,10 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	_initLoggingOnce.Do(func() {
 		// This is delayed until now because we cannot assume the start sequence of the application.
 		// Doing this in init() may end up defining flags after the CLI has been parsed.
-		common.InitLoggingWithConfig(nil)
+		common.InitLoggingWithConfig(oracleconfig.NewOracleLoggingConfig())
 	})
 
-	var confToUse *OracleDriverConfig
+	var confToUse *oracleconfig.OracleDriverConfig
 	if drv.connectorConfig != nil {
 		confToUse = drv.connectorConfig.Clone()
 	} else {
@@ -156,11 +158,11 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	}
 
 	if err := confToUse.AssignFromFlags(); err != nil {
-		return nil, common.NewOracleError(common.NamingDSNInvalid, err, dsn)
+		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, err, dsn)
 	}
 
 	if err := confToUse.AssignFromEnv(); err != nil {
-		return nil, common.NewOracleError(common.NamingDSNInvalid, err, dsn)
+		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, err, dsn)
 	}
 
 	var cred = make([]string, 2)
@@ -172,17 +174,17 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 		if len(parts) == 2 {
 			cred = strings.SplitN(parts[0], "/", 2)
 			if len(cred) != 2 {
-				return nil, common.NewOracleError(common.NamingDSNInvalid, nil, dsn)
+				return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, nil, dsn)
 			}
 			if len(cred[0]) == 0 {
-				return nil, common.NewOracleError(common.NamingDSNInvalid, nil, dsn)
+				return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, nil, dsn)
 			}
 			dsnToUse = parts[1]
 
 			// Credentials in config is not authorized when also specified
 			// in dsn
 			if confToUse.Credentials.User != "" || confToUse.Credentials.Password != "" {
-				return nil, common.NewOracleError(common.ConflictingConnectionParameterSource, nil, "credentials")
+				return nil, common.NewOracleError(oracleErrors.ConflictingConnectionParameterSource, nil, "credentials")
 			}
 
 			// assign credentials
@@ -205,25 +207,25 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 
 	if len(dsnToUse) == 0 {
 		// no way we can go on there
-		return nil, common.NewOracleError(common.NamingDSNInvalid, nil, "Data Source Name is empty")
+		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, nil, "Data Source Name is empty")
 	}
 
 	connectionParts := strings.SplitN(dsnToUse, "?", 2)
 	connectDescriptor := connectionParts[0]
 	if len(connectionParts) == 2 && len(connectionParts[1]) > 0 {
-		queryMap, err := common.QueryStringToMap(connectionParts[1])
+		queryMap, err := oracleconfig.QueryStringToMap(connectionParts[1])
 		if err != nil {
-			return nil, common.NewOracleError(common.NamingDSNInvalid, err, dsn)
+			return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, err, dsn)
 		}
 		if err := confToUse.AssignFromMap(queryMap); err != nil {
-			return nil, common.NewOracleError(common.NamingDSNInvalid, err, dsn)
+			return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, err, dsn)
 		}
 	}
 
 	confToUse.ConnectDescriptor = connectDescriptor
 
 	if validateErr := confToUse.Validate(); validateErr != nil {
-		return nil, common.NewOracleError(common.NamingDSNInvalid, validateErr, dsn)
+		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, validateErr, dsn)
 	}
 
 	// let network layer parse it now.

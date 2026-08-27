@@ -46,7 +46,7 @@ import (
 	"strings"
 	"testing"
 
-	ojson "github.com/oracle/go-driver/oracle/json"
+	ojson "github.com/oracle/go-oracledb/v26/oracle/json"
 )
 
 // TestDriver_OSON_ScalarDocuments inserts scalar-root JSON documents using

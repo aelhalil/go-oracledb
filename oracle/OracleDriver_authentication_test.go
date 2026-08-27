@@ -48,7 +48,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestDriver_Authentication_TTIWRN verifies that an Oracle warning emitted
@@ -153,6 +154,6 @@ func TestDriver_Authentication_TTIWRN(t *testing.T) {
 }
 
 func isInsufficientPrivilegeError(err error) bool {
-	return err != nil && (strings.Contains(err.Error(), string(InsufficientPrivilege)) ||
+	return err != nil && (strings.Contains(err.Error(), string(oracleErrors.InsufficientPrivilege)) ||
 		strings.Contains(err.Error(), "ORA-01031"))
 }

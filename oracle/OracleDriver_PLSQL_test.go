@@ -44,7 +44,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestDriver_PLSQL_AnonymousBlock_Sanity
@@ -155,7 +156,7 @@ func TestDriver_PLSQL_BreakCausedByTimeout(t *testing.T) {
 	defer cancel()
 	_, err = conn.ExecContext(ctx, "BEGIN DBMS_SESSION.SLEEP(300); END;")
 	common.Odl.Info("After execute", "time", time.Now())
-	sqlError, ok := err.(SQLError)
+	sqlError, ok := err.(oracleErrors.SQLError)
 	if !ok {
 		t.Fatalf("Error should be SQLError, but was %v", err)
 	}

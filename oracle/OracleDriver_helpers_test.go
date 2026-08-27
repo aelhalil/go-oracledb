@@ -42,6 +42,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -49,7 +50,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oracle/go-driver/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 const (
@@ -101,7 +103,7 @@ func openTestDBWithConfig(cfg *TestConfig) (*sql.DB, error) {
 
 // openTestDBWithDriverConfig opens a test database connection using the provided driver configuration
 // and performs a ping. The caller owns the returned *sql.DB and must close it.
-func openTestDBWithDriverConfig(cfg *common.OracleDriverConfig) (*sql.DB, error) {
+func openTestDBWithDriverConfig(cfg *oracleconfig.OracleDriverConfig) (*sql.DB, error) {
 	db, err := sql.Open("oracledb", cfg.ConnectDescriptor)
 	if err != nil {
 		return nil, err
@@ -174,14 +176,14 @@ func fetchNLSNcharCharacterSet(ctx context.Context, db *sql.DB) (string, error) 
 
 // checkErrorRaised verifies that an error is a SQLError with the expected error code and cause.
 // This helper is used across multiple test files to validate error handling.
-func checkErrorRaised(t *testing.T, err error, expectedError ErrorCode,
-	expectedCause ErrorCode) {
-	if serr, ok := err.(SQLError); ok {
+func checkErrorRaised(t *testing.T, err error, expectedError oracleErrors.ErrorCode,
+	expectedCause oracleErrors.ErrorCode) {
+	if serr, ok := err.(oracleErrors.SQLError); ok {
 		if serr.ErrorCode() != string(expectedError) {
 			t.Fatalf("Expected %v error but got %s", expectedError, err)
 		}
 
-		if cause, ok := serr.Unwrap().(SQLError); ok {
+		if cause, ok := errors.Unwrap(serr).(oracleErrors.SQLError); ok {
 			if cause.ErrorCode() != string(expectedCause) {
 				t.Fatalf("Expected %v error as cause but got %s", expectedCause, cause)
 			}
