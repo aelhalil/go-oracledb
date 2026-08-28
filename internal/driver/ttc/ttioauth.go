@@ -93,6 +93,10 @@ const (
 	driverNameDefault      = "go-oracledb" // driverNameDefault is reported in V$SESSION_CONNECT_INFO.CLIENT_DRIVER.
 	authOraEdition         = "AUTH_ORA_EDITION"
 
+	authToken     = "AUTH_TOKEN"
+	authHeader    = "AUTH_HEADER"
+	authSignature = "AUTH_SIGNATURE"
+
 	passwordBufferLength = 2112
 	kolrugEnable         = 0x0001
 
@@ -395,6 +399,18 @@ func (o *oAuth) prepareForOAUTH(luser driverCommon.B1Array,
 	return nil
 }
 
+// prepareForTokenOAUTH initializes the OAUTH request fields used for token
+// authentication flows.
+//
+// Parameters:
+//   - luser: the optional user payload to include in the logon mode setup.
+func (o *oAuth) prepareForTokenOAUTH(luser driverCommon.B1Array) {
+	o.initializeLogonModeForOAUTH(luser, o.logonMode, nil)
+	o.setVSessionKeyValsForOAUTH()
+	o.setAlterSessionKeyValsForOAUTH()
+	o.setDriverIdentityKeyValsForOAUTH()
+}
+
 // Initializes logonMode before executing an oauth call.
 // llogonMode Logon mode specified by an external caller.
 // for instance.
@@ -411,6 +427,9 @@ func (o *oAuth) initializeLogonModeForOAUTH(luser driverCommon.B1Array, llogonMo
 var _authPasswordKey = driverCommon.StringToB1Array(authPassword)
 var _authPbkdf2SpeedyKey = driverCommon.StringToB1Array(authPbkdf2SpeedyKey)
 var _authSesskey = driverCommon.StringToB1Array(authSesskey)
+var _authTokenKey = driverCommon.StringToB1Array(authToken)
+var _authHeaderKey = driverCommon.StringToB1Array(authHeader)
+var _authSignatureKey = driverCommon.StringToB1Array(authSignature)
 
 // Adds password-related key-value pairs to the authentication request, including encrypted password and speedy key if provided.
 func (o *oAuth) setPasswordKeyValsForOAUTH(lpassword []byte, speedyKey []byte) {
@@ -427,22 +446,55 @@ func (o *oAuth) setPasswordKeyValsForOAUTH(lpassword []byte, speedyKey []byte) {
 	}
 }
 
+// setTokenKeyValsForOAUTH adds token-based authentication values to the OAUTH
+// request, and includes the signed header fields when provided.
+//
+// Parameters:
+//   - token: the bearer or OCI IAM token to send to the server.
+//   - header: the optional token header payload to send for signed OCI flows.
+//   - signature: the optional signature for header when header is provided.
+//
+// Returns:
+//   - an error if the key/value list cannot be updated.
+func (o *oAuth) setTokenKeyValsForOAUTH(token string, header string, signature string) error {
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authTokenKey,
+		Value: driverCommon.StringToB1Array(token),
+	})
+
+	// If there is no header stop here
+	if len(header) == 0 {
+		return nil
+	}
+
+	// Add header and signature
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authHeaderKey,
+		Value: driverCommon.StringToB1Array(header),
+	})
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authSignatureKey,
+		Value: driverCommon.StringToB1Array(signature),
+	})
+
+	return nil
+}
+
 var _authProxyClientNameKey = driverCommon.StringToB1Array(authProxyClientName)
 
 // Adds virtual session key-value pairs to the authentication request, including terminal,
 // program, machine, and process information.
 func (o *oAuth) setVSessionKeyValsForOAUTH() {
-
-	o.keyValList.PushBackList(_keyValStaticInfoForOAuth1)
-	// fill non-static information
-	v := _keyValStaticInfoForOAuthConnectString.Value.(*driverCommon.KeyValue)
-	v.Value = o.connectString
+	o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authTerminalKey, Value: _dummyTerminalName})
+	// The connect string is request-specific. Keeping it on the message avoids
+	// sharing mutable authentication state across concurrent connections.
+	o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authConnectStringKey, Value: o.connectString})
+	o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authProgramNmKey, Value: currentProcessPath})
 	if len(o.clientName) != 0 {
 		o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authProxyClientNameKey, Value: o.clientName})
 	}
 
 	o.keyValList.PushBackList(_keyValStaticInfoForOAuth2)
-
 }
 
 var _authOraEditionKey = driverCommon.StringToB1Array(authOraEdition)

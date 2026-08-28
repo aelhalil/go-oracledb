@@ -43,7 +43,7 @@ import (
 	"database/sql/driver"
 	"testing"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
+	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
@@ -121,13 +121,13 @@ func TestTTIShelf_LocalizedStatementExecError(t *testing.T) {
 	mockStr := &mockStreamer{}
 
 	shelf := newShelf[driverCommon.MessageType]()
-	shelf.RegisterLocalizationService(common.NewLocalizationService(language.French))
+	shelf.RegisterLocalizationService(internalCommon.NewLocalizationService(language.French))
 	shelf.RegisterMessageStreamer(mockStr)
 
 	stmt := &Statement{
 		shelf: shelf,
 		execStatementExecutor: execContextFunc(func(context.Context, *qualifiedSQLStatement, []driver.NamedValue) (driver.Result, error) {
-			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+			return nil, internalCommon.NewOracleError(oracleErrors.InternalError, nil)
 		}),
 	}
 
@@ -142,6 +142,38 @@ func TestTTIShelf_LocalizedStatementExecError(t *testing.T) {
 	}
 	if got, want := err.Error(), "OGD-00062 - erreur interne factice."; got != want {
 		t.Fatalf("unexpected localized error %q, want %q", got, want)
+	}
+}
+
+// TestTTIShelf_RegisterProviderRegistry stores a provider registry on the shelf
+// and verifies the same instance is returned by the getter.
+func TestTTIShelf_RegisterProviderRegistry(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[int]()
+	registry := internalCommon.NewProviderRegistry()
+
+	shelf.registerProviderRegistry(registry)
+
+	if got := shelf.getProviderRegistry(); got != registry {
+		t.Fatalf("expected provider registry %p, got %p", registry, got)
+	}
+}
+
+// TestTTIShelf_RegisterProviderRegistry_ReplacesExistingRegistry verifies that
+// registering a second provider registry replaces the previous one on the shelf.
+func TestTTIShelf_RegisterProviderRegistry_ReplacesExistingRegistry(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[int]()
+	firstRegistry := internalCommon.NewProviderRegistry()
+	secondRegistry := internalCommon.NewProviderRegistry()
+
+	shelf.registerProviderRegistry(firstRegistry)
+	shelf.registerProviderRegistry(secondRegistry)
+
+	if got := shelf.getProviderRegistry(); got != secondRegistry {
+		t.Fatalf("expected replacement provider registry %p, got %p", secondRegistry, got)
 	}
 }
 
@@ -174,7 +206,7 @@ func (t *testCodecFactory) getDefineOac(_ DtyType, _ columnContext, _ driverComm
 func TestTTIShelf_StatementDrain(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
-	sessCtx := &driverCommon.SessionContext{}
+	sessCtx := driverCommon.NewSessionContext()
 	s1, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
 	s2, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
 	s3, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")

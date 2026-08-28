@@ -44,6 +44,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log/slog"
+	"net"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -96,6 +97,48 @@ func newNetworkSession() *networkSession {
 		controlPkt:         &controlPacket{},
 		byteOrder:          driverCommon.BIG_ENDIAN,
 	}
+}
+
+// GetRemoteAddress returns the connected remote network address when it is
+// available, or an empty string otherwise.
+func (ns *networkSession) GetRemoteAddress() string {
+	remoteAddr := ns.getRemoteTCPAddr()
+	if remoteAddr == nil {
+		return ""
+	}
+	return remoteAddr.IP.String()
+}
+
+// GetRemotePort returns the connected remote network port when it is
+// available, or 0 otherwise.
+func (ns *networkSession) GetRemotePort() int {
+	remoteAddr := ns.getRemoteTCPAddr()
+	if remoteAddr == nil {
+		return 0
+	}
+	return remoteAddr.Port
+}
+
+func (ns *networkSession) getRemoteTCPAddr() *net.TCPAddr {
+	type remoteAddrProvider interface {
+		RemoteAddr() net.Addr
+	}
+	adapter, ok := ns.ntAdapter.(remoteAddrProvider)
+	if !ok {
+		return nil
+	}
+	return remoteTCPAddrFromConn(adapter.RemoteAddr())
+}
+
+func remoteTCPAddrFromConn(remoteAddr net.Addr) *net.TCPAddr {
+	if remoteAddr == nil {
+		return nil
+	}
+	tcpAddr, ok := remoteAddr.(*net.TCPAddr)
+	if !ok {
+		return nil
+	}
+	return tcpAddr
 }
 
 // transportConnect establishes the transport-level connection

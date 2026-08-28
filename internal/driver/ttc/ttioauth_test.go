@@ -43,6 +43,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -430,6 +431,51 @@ func TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB(t *testing.T) {
 	if !foundSessKey {
 		t.Error("Session key not found")
 	}
+}
+
+func TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal(t *testing.T) {
+	connectString := func(oauth *oAuth) string {
+		t.Helper()
+		for element := oauth.keyValList.Front(); element != nil; element = element.Next() {
+			keyValue := element.Value.(*common.KeyValue)
+			if common.B1ArrayToString(keyValue.Key) == authConnectString {
+				return common.B1ArrayToString(keyValue.Value)
+			}
+		}
+		t.Fatal("AUTH_CONNECT_STRING not found")
+		return ""
+	}
+
+	first := NewOAuth().(*oAuth)
+	first.setConnectString("first")
+	first.setVSessionKeyValsForOAUTH()
+
+	second := NewOAuth().(*oAuth)
+	second.setConnectString("second")
+	second.setVSessionKeyValsForOAUTH()
+
+	if got := connectString(first); got != "first" {
+		t.Fatalf("first AUTH_CONNECT_STRING = %q, want first", got)
+	}
+	if got := connectString(second); got != "second" {
+		t.Fatalf("second AUTH_CONNECT_STRING = %q, want second", got)
+	}
+
+	var waitGroup sync.WaitGroup
+	for index := range 16 {
+		expected := strconv.Itoa(index)
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			oauth := NewOAuth().(*oAuth)
+			oauth.setConnectString(expected)
+			oauth.setVSessionKeyValsForOAUTH()
+			if got := connectString(oauth); got != expected {
+				t.Errorf("AUTH_CONNECT_STRING = %q, want %q", got, expected)
+			}
+		}()
+	}
+	waitGroup.Wait()
 }
 
 // TestOAuth_setDriverIdentityKeyValsForOAUTH tests driver identity key-value setting.

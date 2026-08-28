@@ -44,6 +44,7 @@ import (
 	"maps"
 	"weak"
 
+	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
@@ -64,6 +65,7 @@ type StmtCancellationFunction func(ctx context.Context) error
 type ttiShelf[T any] struct {
 	*common.Shelf[T]
 	codecFactory             codecFactory
+	_providerRegistry        internalCommon.ProviderRegistry
 	_statements              map[*Statement]weak.Pointer[Statement]
 	_currentTransaction      *transaction
 	_cancelExecutionFunction StmtCancellationFunction
@@ -94,6 +96,22 @@ func (s *ttiShelf[T]) RegisterCodecFactory(factory codecFactory) *ttiShelf[T] {
 // GetCodecFactory returns the registered codecFactory, or nil if none was registered.
 func (s *ttiShelf[T]) GetCodecFactory() codecFactory {
 	return s.codecFactory
+}
+
+// registerProviderRegistry stores the provider registry associated with this shelf.
+//
+// Parameters:
+//   - providerRegistry: the provider registry to store on the shelf.
+func (s *ttiShelf[T]) registerProviderRegistry(providerRegistry internalCommon.ProviderRegistry) {
+	s._providerRegistry = providerRegistry
+}
+
+// getProviderRegistry returns the provider registry stored on this shelf.
+//
+// Returns:
+//   - the provider registry registered on the shelf, or nil if none was registered.
+func (s *ttiShelf[T]) getProviderRegistry() internalCommon.ProviderRegistry {
+	return s._providerRegistry
 }
 
 // GetStatements gets all opened statements

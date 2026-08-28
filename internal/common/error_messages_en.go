@@ -550,4 +550,32 @@ func initMessagesEn() {
 	// Action:   Use supported JSONValue input types or bind JSONString for preformatted JSON text.
 	// Comment:  Arg[0]: unsupported value description.
 	message.SetString(language.English, string(oracleErrors.OsonEncodingError), "OSON encoding failed: %v")
+	// Document: No
+	// Cause:    Token-based authentication resolved an empty token.
+	// Action:   Provide a non-empty token directly with AccessToken or ensure the token file contains a valid token.
+	message.SetString(language.English, string(oracleErrors.EmptyTokenError), "token-based authentication token id empty")
+
+	// Document: No
+	// Cause:    An error occured during Token-based authentication
+	// Action:   Verify that the token provider returns a valid token and private key (for signed token providers)
+	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occured during token authentication")
+
+	// Document: No
+	// Cause:    A required value could not be retrieved or was empty.
+	// Action:   Verify that the required value is populated before token authentication uses it.
+	// Comment:  Arg[0]: required property key
+	message.SetString(language.English, string(oracleErrors.ValueRetrievalError), "failed to retrieve value %s")
+
+	// Document: No
+	// Cause:    The signed token private key is missing, malformed, or not a supported RSA signing key.
+	// Action:   Verify that oci_db_key.pem exists, is valid PEM/PKCS8, and contains an RSA private key.
+	message.SetString(language.English, string(oracleErrors.InvalidSignedTokenPrivateKey), "invalid signed token private key")
+
+	// Document: No
+	// Cause:    The access token has expired according to its JWT exp claim.
+	// Action:   Generate or retrieve a fresh access token and try the connection again.
+	message.SetString(language.English, string(oracleErrors.ExpiredToken), "access token has expired")
+
+	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider found of the requested type")
+
 }

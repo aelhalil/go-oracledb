@@ -83,6 +83,8 @@ var testCases = []struct {
 	{"TestEventServiceRegisterAndPost", "unitary", false, TestEventServiceRegisterAndPost},
 	{"TestAuthencationFactoryWithNilParameters", "unitary", false, TestAuthencationFactoryWithNilParameters},
 	{"TestAuthencationFactoryBasic", "unitary", false, TestAuthencationFactoryBasic},
+	{"TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", "unitary", false, TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
+	{"TestGetAuthenticator_UsesTokenAuthenticatorForOAuth", "unitary", false, TestGetAuthenticator_UsesTokenAuthenticatorForOAuth},
 	{"TestGetConnection", "unitary", false, TestGetConnection},
 	{"TestConnectionPinger_Ping", "unitary", false, TestConnectionPinger_Ping},
 	{"TestConnectionPinger_IsValid", "unitary", false, TestConnectionPinger_IsValid},
@@ -230,6 +232,15 @@ var testCases = []struct {
 	{"TestStatementExecutor_Others_FaultyPush", "unitary", false, TestStatementExecutor_Others_FaultyPush},
 	{"TestPasswordAuthenticator_doOSESSKEY_Golden", "unitary", false, TestPasswordAuthenticator_doOSESSKEY_Golden},
 	{"TestPasswordAuthenticator_doOAuth_Golden", "unitary", false, TestPasswordAuthenticator_doOAuth_Golden},
+	{"TestGetAuthenticator_SelectionLogic", "unitary", false, TestGetAuthenticator_SelectionLogic},
+	{"TestProviderRegistryReturnsFirstRegisteredTokenProvider", "unitary", false, TestProviderRegistryReturnsFirstRegisteredTokenProvider},
+	{"TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature", "unitary", false, TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature},
+	{"TestSignedTokenProviderGenerateTokenHeader", "unitary", false, TestSignedTokenProviderGenerateTokenHeader},
+	{"TestProviderRegistryReturnsNilWhenTokenProviderMissing", "unitary", false, TestProviderRegistryReturnsNilWhenTokenProviderMissing},
+	{"TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader", "unitary", false, TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader},
+	{"TestTokenAuthenticatorSignHeaderForSignedProvider", "unitary", false, TestTokenAuthenticatorSignHeaderForSignedProvider},
+	{"TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty", "unitary", false, TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty},
+	{"TestValidateJWTExpirationExpired", "unitary", false, TestValidateJWTExpirationExpired},
 	{"TestConnectionNegotiator_Negotiate_Fail", "unitary", false, TestConnectionNegotiator_Negotiate_Fail},
 	{"TestConnectionNegotiator_Negotiate_Success", "unitary", false, TestConnectionNegotiator_Negotiate_Success},
 	{"TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey", "unitary", false, TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey},
@@ -326,6 +337,7 @@ var testCases = []struct {
 	{"TestOAuth_initializeLogonModeForOAUTH", "unitary", false, TestOAuth_initializeLogonModeForOAUTH},
 	{"TestOAuth_setPasswordKeyValsForOAUTH", "unitary", false, TestOAuth_setPasswordKeyValsForOAUTH},
 	{"TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB", "unitary", false, TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB},
+	{"TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal", "unitary", true, TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal},
 	{"TestOAuth_setDriverIdentityKeyValsForOAUTH", "unitary", false, TestOAuth_setDriverIdentityKeyValsForOAUTH},
 	{"TestOAuth_setAlterSessionKeyValsForOAUTH", "unitary", false, TestOAuth_setAlterSessionKeyValsForOAUTH},
 	{"TestOAuth_validateKeySizeForOAUTH_Success", "unitary", false, TestOAuth_validateKeySizeForOAUTH_Success},
@@ -1071,6 +1083,8 @@ type mockNetworkSession struct {
 	sleepDuration   time.Duration
 	cancelErr       error
 	inband          bool
+	remoteAddress   string
+	remotePort      int
 }
 
 // newTestConnection creates a connection without querying DBTIMEZONE. Tests that
@@ -1096,6 +1110,14 @@ func newTestConnection(
 // CheckInbandNotification implements [common.NetworkSession].
 func (m *mockNetworkSession) CheckInbandNotification() bool {
 	return m.inband
+}
+
+func (m *mockNetworkSession) GetRemoteAddress() string {
+	return m.remoteAddress
+}
+
+func (m *mockNetworkSession) GetRemotePort() int {
+	return m.remotePort
 }
 
 func (m *mockNetworkSession) CancelOperation(ctx context.Context) error {

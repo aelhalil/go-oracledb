@@ -81,6 +81,15 @@ func NewNTTCP(atts NTattributes, port uint16) *nttcp {
 	}
 }
 
+// RemoteAddr returns the remote address of the underlying stream, or nil when
+// no stream is connected.
+func (nt *nttcp) RemoteAddr() net.Addr {
+	if nt.stream == nil {
+		return nil
+	}
+	return nt.stream.RemoteAddr()
+}
+
 type ioOperationResult struct {
 	byteCount int   // number of bytes read or write
 	ioerr     error // error of the I/O operation

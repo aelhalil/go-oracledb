@@ -212,7 +212,6 @@ func TestDriver_OpenConnectorUsesFallbackConnectDescriptor(t *testing.T) {
 // TestDriver_OpenConnectorStoresConnectDescriptorFromDSN verifies that
 // credentials and the connect descriptor are stored from the DSN.
 func TestDriver_OpenConnectorStoresConnectDescriptorFromDSN(t *testing.T) {
-	//t.Parallel()
 	connector, err := NewDriver().openConnector("user/pass@localhost:1521/freepdb1")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)

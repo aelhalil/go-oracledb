@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"strings"
 	"testing"
 
@@ -74,6 +75,24 @@ type mockNTTCPS struct {
 	mockNTAdapter
 	renegotiated bool
 	cleared      bool
+}
+
+type stubNetConn struct {
+	net.Conn
+	remoteAddr net.Addr
+}
+
+func (s stubNetConn) RemoteAddr() net.Addr {
+	return s.remoteAddr
+}
+
+type remoteAddrNTAdapter struct {
+	mockNTAdapter
+	remoteAddr net.Addr
+}
+
+func (m *remoteAddrNTAdapter) RemoteAddr() net.Addr {
+	return m.remoteAddr
 }
 
 func (m *mockNTTCPS) TLSReneg() {
@@ -144,6 +163,50 @@ func TestNewNetworkSession(t *testing.T) {
 	}
 	if ns.byteOrder != driverCommon.BIG_ENDIAN {
 		t.Errorf("Default byte order should be BIG_ENDIAN")
+	}
+}
+
+func TestGetRemoteEndpoint(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		adapter     transport.NTAdapter
+		wantAddress string
+		wantPort    int
+	}{
+		{
+			name:        "TCP",
+			adapter:     &remoteAddrNTAdapter{remoteAddr: &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 1521}},
+			wantAddress: "192.0.2.10",
+			wantPort:    1521,
+		},
+		{
+			name:        "TCPS",
+			adapter:     &remoteAddrNTAdapter{remoteAddr: &net.TCPAddr{IP: net.ParseIP("2001:db8::10"), Port: 2484}},
+			wantAddress: "2001:db8::10",
+			wantPort:    2484,
+		},
+		{
+			name:        "UnknownAdapter",
+			adapter:     &mockNTAdapter{},
+			wantAddress: "",
+			wantPort:    0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns := newNetworkSession()
+			ns.ntAdapter = tt.adapter
+
+			if got := ns.GetRemoteAddress(); got != tt.wantAddress {
+				t.Fatalf("GetRemoteAddress() = %q, want %q", got, tt.wantAddress)
+			}
+			if got := ns.GetRemotePort(); got != tt.wantPort {
+				t.Fatalf("GetRemotePort() = %d, want %d", got, tt.wantPort)
+			}
+		})
 	}
 }
 

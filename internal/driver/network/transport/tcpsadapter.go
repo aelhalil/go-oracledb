@@ -68,6 +68,15 @@ func NewNTTCPS(atts NTattributes) *nttcps {
 	}
 }
 
+// RemoteAddr returns the remote address of the active TLS stream, or nil when
+// no stream is connected.
+func (nt *nttcps) RemoteAddr() net.Addr {
+	if nt.stream == nil {
+		return nil
+	}
+	return nt.stream.RemoteAddr()
+}
+
 // Connect establishes a TLS connection
 func (nt *nttcps) Connect(ctx context.Context, address Address) error {
 	nt.originHost = address.OriginHost
