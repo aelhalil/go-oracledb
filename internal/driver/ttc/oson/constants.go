@@ -54,7 +54,7 @@ const (
 	// osonFormatMinVersion is the oldest OSON format version accepted by this parser.
 	osonFormatMinVersion = 1
 	// osonFormatMaxVersion is the newest OSON format version accepted by this parser.
-	osonFormatMaxVersion = 3
+	osonFormatMaxVersion = 4
 
 	// osonHeaderMinSize is the minimum size of the fixed OSON header prefix.
 	osonHeaderMinSize = 6
