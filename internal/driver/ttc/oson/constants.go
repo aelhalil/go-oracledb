@@ -122,8 +122,8 @@ const (
 
 // Flag masks in the 2-byte primary flag.
 const (
-	// osonFlagRelativeOffsetsMask indicates child offsets are stored as signed
-	// deltas relative to the containing node's tree-relative offset.
+	// osonFlagRelativeOffsetsMask indicates this document is encoded using
+	// relative-offset mode.
 	osonFlagRelativeOffsetsMask = 0x0001
 
 	// osonFlagInlineLeafMask indicates JSON scalar leaf values are inlined in the
@@ -156,8 +156,9 @@ const (
 	// osonFlagTreeSegmentSizeUB4Mask indicates the tree segment size is stored as UB4.
 	osonFlagTreeSegmentSizeUB4Mask = 0x1000
 
-	// osonFlagObjectFieldsUnsortedMask indicates object field ids may be unsorted.
-	osonFlagObjectFieldsUnsortedMask = 0x8000
+	// osonFlagObjectFieldsUnsortedMask indicates object field ids within each object
+	// is not sorted by field id.
+	osonFlagObjectFIDsUnsortedMask = 0x8000
 )
 
 // Dictionary limits and size bounds derived from OSON field-name encoding.
