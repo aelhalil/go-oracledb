@@ -118,24 +118,6 @@ func (b *osonBuffer) readUB4() (drvCommon.UB4, error) {
 	return drvCommon.UB4(value), err
 }
 
-// readSB1 reads a signed 1-byte OSON value.
-func (b *osonBuffer) readSB1() (drvCommon.SB1, error) {
-	value, err := b.readUint8()
-	return drvCommon.SB1(int8(value)), err
-}
-
-// readSB2 reads a signed 2-byte big-endian OSON value.
-func (b *osonBuffer) readSB2() (drvCommon.SB2, error) {
-	value, err := b.readUint16()
-	return drvCommon.SB2(int16(value)), err
-}
-
-// readSB4 reads a signed 4-byte big-endian OSON value.
-func (b *osonBuffer) readSB4() (drvCommon.SB4, error) {
-	value, err := b.readUint32()
-	return drvCommon.SB4(int32(value)), err
-}
-
 // readSliceAt returns a view of an absolute range without moving the cursor.
 func (b *osonBuffer) readSliceAt(offset, length int) (drvCommon.B1Array, error) {
 	if err := b.ensureRange(offset, length, "osonBuffer.readSliceAt"); err != nil {

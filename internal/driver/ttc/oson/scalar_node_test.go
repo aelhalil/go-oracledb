@@ -527,6 +527,16 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 			want:    oracleErrors.OsonBufferError,
 		},
 		{
+			name:    "truncated date payload",
+			payload: drvCommon.B1Array{osonOpDate, 120, 124, 1, 2},
+			want:    oracleErrors.OsonBufferError,
+		},
+		{
+			name:    "truncated timestamp7 payload",
+			payload: drvCommon.B1Array{osonOpTimestamp7, 120, 124, 1, 2},
+			want:    oracleErrors.OsonBufferError,
+		},
+		{
 			name:    "truncated timestamptz payload",
 			payload: drvCommon.B1Array{osonOpTimestampTZ, 120, 124, 1, 2},
 			want:    oracleErrors.OsonBufferError,
@@ -537,7 +547,32 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 			want:    oracleErrors.OsonBufferError,
 		},
 		{
-			name:    "oversized id payload length",
+			name:    "truncated interval ym payload",
+			payload: drvCommon.B1Array{osonOpIntervalYM, 0x80, 0x00},
+			want:    oracleErrors.OsonBufferError,
+		},
+		{
+			name:    "truncated binary ub2 payload",
+			payload: drvCommon.B1Array{osonOpBinaryUB2, 0x00, 0x03, 0x01},
+			want:    oracleErrors.OsonBufferError,
+		},
+		{
+			name:    "truncated binary ub4 payload",
+			payload: drvCommon.B1Array{osonOpBinaryUB4, 0x00, 0x00, 0x00, 0x03, 0x01},
+			want:    oracleErrors.OsonBufferError,
+		},
+		{
+			name:    "empty compact signed32 payload",
+			payload: drvCommon.B1Array{osonOpCompactSigned32Prefix},
+			want:    oracleErrors.ConverterEmptyInput,
+		},
+		{
+			name:    "empty compact signed64 payload",
+			payload: drvCommon.B1Array{osonOpCompactSigned64Prefix},
+			want:    oracleErrors.ConverterEmptyInput,
+		},
+		{
+			name:    "truncated id payload",
 			payload: drvCommon.B1Array{osonOpID, 0x80},
 			want:    oracleErrors.OsonBufferError,
 		},
@@ -549,6 +584,11 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 		{
 			name:    "unknown scalar opcode",
 			payload: drvCommon.B1Array{0x79},
+			want:    oracleErrors.OsonUnsupportedScalarError,
+		},
+		{
+			name:    "unsupported extended binary opcode",
+			payload: drvCommon.B1Array{0x7b},
 			want:    oracleErrors.OsonUnsupportedScalarError,
 		},
 	}
@@ -566,6 +606,25 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 			}
 			assertOracleErrorCode(t, err, tc.want)
 		})
+	}
+}
+
+// TestScalarNode_IDReadsFullUB1Length verifies the ID payload reader accepts
+// the largest length representable by the UB1 wire field.
+func TestScalarNode_IDReadsFullUB1Length(t *testing.T) {
+	const payloadLength = _maxUB1
+	payload := append(drvCommon.B1Array{osonOpID, byte(payloadLength)}, make([]byte, payloadLength)...)
+
+	node, err := newScalarNodeAt(newOsonBuffer(payload), &osonHeader{}, 0)
+	if err != nil {
+		t.Fatalf("newScalarNodeAt() error = %v", err)
+	}
+	got, err := node.Value(drvCommon.JSONOptDefault)
+	if err != nil {
+		t.Fatalf("Value() error = %v", err)
+	}
+	if raw, ok := got.([]byte); !ok || len(raw) != payloadLength {
+		t.Fatalf("Value() = %#v, want []byte of length %d", got, payloadLength)
 	}
 }
 

@@ -94,9 +94,33 @@ func IsOson(data drvCommon.B1Array) bool {
 	return binary.BigEndian.Uint32(data[:osonUB4Size])&osonMagicPrefixMask == osonMagicPrefix
 }
 
+// jsonCompatibleValue converts raw binary values to the hexadecimal string
+// representation used by OSON JSON rendering. Container values are traversed
+// so binary children do not fall back to encoding/json's base64 representation.
+func jsonCompatibleValue(value any) any {
+	switch value := value.(type) {
+	case []byte:
+		return fmt.Sprintf("%X", value)
+	case []any:
+		converted := make([]any, len(value))
+		for i, item := range value {
+			converted[i] = jsonCompatibleValue(item)
+		}
+		return converted
+	case map[string]any:
+		converted := make(map[string]any, len(value))
+		for key, item := range value {
+			converted[key] = jsonCompatibleValue(item)
+		}
+		return converted
+	default:
+		return value
+	}
+}
+
 // newNodeAt resolves one node at offset and returns the matching OSON node.
 //
-// It reads the node opcode, follows at most one redirect, then dispatches to
+// It reads the node opcode, resolves forwarding records, then dispatches to
 // the object, array, or scalar constructor.
 //
 // Input:
@@ -118,25 +142,39 @@ func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONN
 		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 	}
 
-	opcode, err := buf.readUB1At(offset)
-	if err != nil {
-		common.Odl.Error("newNodeAt: failed", "error", err, "offset", offset)
-		return nil, err
-	}
-
 	resolvedOffset := offset
-	if nextOffset, redirected, err := redirectedNodeOffset(buf, header, offset, opcode); err != nil {
-		common.Odl.Error("newNodeAt: failed", "error", err, "offset", offset, "opcode", opcode)
-		return nil, err
-	} else if redirected {
-		finalOpcode, err := buf.readUB1At(nextOffset)
+	seen := make(map[int]struct{})
+	var opcode drvCommon.UB1
+	for {
+		// Update records can forward through more than one tree entry. Resolve
+		// the chain here so each node constructor sees the final node opcode.
+		if !header.containsNodeOffset(resolvedOffset) {
+			cause := fmt.Errorf("node offset %d is outside the tree segments", resolvedOffset)
+			common.Odl.Error("newNodeAt: failed", "error", cause, "offset", resolvedOffset)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		}
+		if _, exists := seen[resolvedOffset]; exists {
+			cause := fmt.Errorf("cyclic OSON forwarding at node offset %d", resolvedOffset)
+			common.Odl.Error("newNodeAt: failed", "error", cause, "offset", resolvedOffset)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		}
+		seen[resolvedOffset] = struct{}{}
+
+		var err error
+		opcode, err = buf.readUB1At(resolvedOffset)
 		if err != nil {
-			common.Odl.Error("newNodeAt: failed", "error", err, "offset", nextOffset)
+			common.Odl.Error("newNodeAt: failed", "error", err, "offset", resolvedOffset)
 			return nil, err
 		}
-
+		nextOffset, redirected, err := redirectedNodeOffset(buf, header, resolvedOffset, opcode)
+		if err != nil {
+			common.Odl.Error("newNodeAt: failed", "error", err, "offset", resolvedOffset, "opcode", opcode)
+			return nil, err
+		}
+		if !redirected {
+			break
+		}
 		resolvedOffset = nextOffset
-		opcode = finalOpcode
 	}
 
 	switch {
@@ -251,6 +289,9 @@ func readContainerCountAt(buf *osonBuffer, offset int, opcode drvCommon.UB1) (co
 //   - child-offset decode failure.
 func readChildOffsetsAt(buf *osonBuffer, header *osonHeader, containerOffset, start, count int, opcode drvCommon.UB1) ([]int, error) {
 	size := childOffsetSize(opcode)
+	if err := ensureNodeTableRange(buf, start, count, size, "readChildOffsetsAt"); err != nil {
+		return nil, err
+	}
 	offsets := make([]int, count)
 	for i := 0; i < count; i++ {
 		entryOffset := start + (i * size)
@@ -261,6 +302,16 @@ func readChildOffsetsAt(buf *osonBuffer, header *osonHeader, containerOffset, st
 		offsets[i] = childOffset
 	}
 	return offsets, nil
+}
+
+// ensureNodeTableRange validates an untrusted node table before allocation.
+func ensureNodeTableRange(buf *osonBuffer, start, count, width int, stage string) error {
+	if buf == nil || start < 0 || count < 0 || width <= 0 || start > buf.size() || count > (buf.size()-start)/width {
+		cause := fmt.Errorf("node table start %d count %d width %d exceeds document size", start, count, width)
+		common.Odl.Error(stage+": failed", "error", cause, "start", start, "count", count, "width", width)
+		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+	}
+	return nil
 }
 
 // readChildOffsetAt decodes one child-offset entry into an absolute document offset.
@@ -296,14 +347,18 @@ func readChildOffsetAt(buf *osonBuffer, header *osonHeader, containerOffset, ent
 		if err != nil {
 			return 0, err
 		}
-		return treeStart + int(val), nil
+		// The stored value is relative to the beginning of the primary tree.
+		// That beginning is the common address-space origin for both the primary
+		// and extended tree segments, so do not add the current node's segment
+		// offset here.
+		return header.treeSegmentOffset() + int(val), nil
 	case osonUB4Size:
 		val, err := buf.readUB4At(entryOffset)
 		if err != nil {
 			return 0, err
 		}
 
-		return treeStart + int(val), nil
+		return header.treeSegmentOffset() + int(val), nil
 	}
 
 	cause := fmt.Errorf("unsupported child offset width %d", width)

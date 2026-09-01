@@ -87,15 +87,8 @@ const (
 	osonIntervalYMPayloadSize = 5
 	// osonIntervalDSPayloadSize is the fixed payload size of one INTERVAL DAY TO SECOND scalar.
 	osonIntervalDSPayloadSize = 11
-	// osonTimestampPayloadSize is the fixed payload size of one TIMESTAMP scalar.
-	osonTimestampPayloadSize = 11
 	// osonTimestamp7PayloadSize is the fixed payload size of one 7-byte TIMESTAMP scalar.
 	osonTimestamp7PayloadSize = 7
-	// osonTimestampTZPayloadSize is the fixed payload size of one TIMESTAMP WITH TIME ZONE scalar.
-	osonTimestampTZPayloadSize = 13
-
-	// osonIDMaxPayloadSize is the largest payload that fits the UB1-length OSON ID encoding.
-	osonIDMaxPayloadSize = 127
 
 	osonObjectOrArrayOpMask = 0xC0
 	osonCompactSigned32Mask = 0xF8
@@ -159,6 +152,10 @@ const (
 	// osonFlagObjectFieldsUnsortedMask indicates object field ids within each object
 	// is not sorted by field id.
 	osonFlagObjectFIDsUnsortedMask = 0x8000
+	// Reserved root-header bits must remain clear in persistent OSON images.
+	osonFlagReservedMask = 0x0280
+	// Only the secondary-dictionary UB2-offset bit is currently assigned.
+	osonFlagSecondaryReservedMask = ^drvCommon.UB2(osonFlagSecondaryFieldOffsetsUB2Mask)
 )
 
 // Dictionary limits and size bounds derived from OSON field-name encoding.

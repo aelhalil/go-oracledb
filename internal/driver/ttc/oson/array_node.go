@@ -76,6 +76,16 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int) (*
 		common.Odl.Error("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
 		return nil, common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
+	if opcode&(osonOpChildNoSortBit|osonOpObjectSharedFieldIDsBit|osonOpObjectUpdateOverflowBit) != 0 {
+		cause := fmt.Errorf("array opcode 0x%02x contains object-only flags", opcode)
+		common.Odl.Error("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+	}
+	if opcode&osonOpChildSizeBits == osonOpChildDelegateForm {
+		cause := fmt.Errorf("array opcode 0x%02x uses the delegate child-header form", opcode)
+		common.Odl.Error("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+	}
 
 	elementCount, childOffsetArrayStart, err := readContainerCountAt(buf, arrayNodeOffset+1, opcode)
 	if err != nil {
@@ -143,7 +153,7 @@ func (array *arrayNode) StringWithOption(opts drvCommon.JSONOption) (string, err
 		return "", err
 	}
 
-	jsonBytes, err := json.Marshal(materializedArray)
+	jsonBytes, err := json.Marshal(jsonCompatibleValue(materializedArray))
 	if err != nil {
 		common.Odl.Error("arrayNode.StringWithOption: failed", "error", err, "offset", array.offset)
 		return "", common.NewOracleError(oracleErrors.OsonBufferError, nil)
@@ -201,11 +211,12 @@ func (array *arrayNode) Len() int {
 func (array *arrayNode) Value(opts drvCommon.JSONOption) ([]any, error) {
 	elementValues := make([]any, len(array.childOffsets))
 	for elementIndex := range array.childOffsets {
-		childNode, ok := array.Get(elementIndex)
-		if !ok {
-			cause := fmt.Errorf("array child %d could not be loaded", elementIndex)
-			common.Odl.Error("arrayNode.Value: failed", "error", cause, "offset", array.offset, "index", elementIndex)
-			return nil, common.NewOracleError(oracleErrors.OsonBufferError, nil)
+		// Get intentionally returns only a boolean for the public lazy-node API;
+		// materialization must retain the parsing error for its caller.
+		childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[elementIndex])
+		if err != nil {
+			common.Odl.Error("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex)
+			return nil, err
 		}
 
 		elementValue, err := childNode.GetValue(opts)

@@ -39,6 +39,7 @@
 package oson
 
 import (
+	"encoding/binary"
 	"testing"
 
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -57,4 +58,236 @@ func TestNewNodeAt_RejectsMissingContext(t *testing.T) {
 	} else {
 		assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 	}
+}
+
+// TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles verifies forwarding is
+// resolved until a concrete node is reached and cannot loop indefinitely.
+func TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles(t *testing.T) {
+	t.Run("redirect chain", func(t *testing.T) {
+		// Low-level forwarding layout, not an OSON source fixture.
+		buffer := newOsonBuffer(drvCommon.B1Array{
+			osonOpUpdateForwardUB2, 0x00, 0x00,
+			osonOpUpdateForwardUB2, 0x00, 0x03,
+			osonOpTrue,
+		})
+		header := &osonHeader{
+			treeSegmentByteLength:          3,
+			extendedTreeSegmentStartOffset: 3,
+			extendedTreeSegmentByteLength:  4,
+		}
+
+		node, err := newNodeAt(buffer, header, 0)
+		if err != nil {
+			t.Fatalf("newNodeAt() error = %v", err)
+		}
+		value, err := node.GetValue(drvCommon.JSONOptDefault)
+		if err != nil {
+			t.Fatalf("GetValue() error = %v", err)
+		}
+		if got, want := value, true; got != want {
+			t.Fatalf("GetValue() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("redirect cycle", func(t *testing.T) {
+		// Low-level forwarding layout, not an OSON source fixture.
+		buffer := newOsonBuffer(drvCommon.B1Array{
+			osonOpUpdateForwardUB2, 0x00, 0x00,
+			osonOpUpdateForwardUB2, 0x00, 0x00,
+		})
+		header := &osonHeader{
+			treeSegmentByteLength:          3,
+			extendedTreeSegmentStartOffset: 3,
+			extendedTreeSegmentByteLength:  3,
+		}
+
+		_, err := newNodeAt(buffer, header, 0)
+		if err == nil {
+			t.Fatal("newNodeAt() error = nil, want forwarding-cycle failure")
+		}
+		assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
+	})
+}
+
+// TestNewNodeAt_RejectsUpdateHeaderOffset verifies a node offset cannot point
+// into the V2 update header rather than either tree segment.
+func TestNewNodeAt_RejectsUpdateHeaderOffset(t *testing.T) {
+	buffer := newOsonBuffer(sampleUpdatedTinyScalar.oson)
+	header, err := newOsonHeader(buffer)
+	if err != nil {
+		t.Fatalf("newOsonHeader() error = %v", err)
+	}
+	updateOffset := header.treeSegmentOffset() + int(header.treeSegmentByteLength)
+
+	_, err = newNodeAt(buffer, header, updateOffset)
+	if err == nil {
+		t.Fatal("newNodeAt() error = nil, want update-header offset failure")
+	}
+	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
+}
+
+// TestNodeOffsets_CoverAddressWidths verifies child offsets use the primary
+// tree address space and relative offsets preserve signed deltas.
+func TestNodeOffsets_CoverAddressWidths(t *testing.T) {
+	buffer := newOsonBuffer(drvCommon.B1Array{
+		0x00, 0x02,
+		0x00, 0x00, 0x00, 0x03,
+		0xFF, 0xF0,
+		0xFF, 0xFF, 0xFF, 0xF0,
+	})
+	header := &osonHeader{
+		treeSegmentStartOffset:         10,
+		treeSegmentByteLength:          64,
+		extendedTreeSegmentStartOffset: 90,
+		extendedTreeSegmentByteLength:  64,
+	}
+
+	if got, err := readChildOffsetAt(buffer, header, 95, 0, osonUB2Size); err != nil || got != 12 {
+		t.Fatalf("UB2 primary offset = %d, %v; want 12, nil", got, err)
+	}
+	if got, err := readChildOffsetAt(buffer, header, 95, 2, osonUB4Size); err != nil || got != 13 {
+		t.Fatalf("UB4 primary offset = %d, %v; want 13, nil", got, err)
+	}
+
+	header.flags = osonFlagRelativeOffsetsMask
+	if got, err := readChildOffsetAt(buffer, header, 30, 6, osonUB2Size); err != nil || got != 14 {
+		t.Fatalf("relative UB2 offset = %d, %v; want 14, nil", got, err)
+	}
+	if got, err := readChildOffsetAt(buffer, header, 30, 8, osonUB4Size); err != nil || got != 14 {
+		t.Fatalf("relative UB4 offset = %d, %v; want 14, nil", got, err)
+	}
+	if _, err := readRelativeChildOffset(buffer, 0, 3); err == nil {
+		t.Fatal("readRelativeChildOffset() error = nil, want unsupported-width failure")
+	}
+}
+
+// TestParse_RejectsOutOfRangeRelativeChildOffset verifies a relative offset
+// derived from an Oracle-produced fixture cannot escape the primary tree.
+func TestParse_RejectsOutOfRangeRelativeChildOffset(t *testing.T) {
+	doc := sampleRelativeOffsets.cloneOSON()
+	header, err := newOsonHeader(newOsonBuffer(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootOffset := header.treeSegmentOffset()
+	// The root object stores [opcode][count][three UB1 FIDs][UB2 offsets...].
+	binary.BigEndian.PutUint16(doc[rootOffset+5:], 0x7fff)
+
+	root, err := Parse(doc)
+	if err == nil {
+		_, err = root.GetValue(drvCommon.JSONOptDefault)
+	}
+	if err == nil {
+		t.Fatal("GetValue() error = nil, want out-of-range relative-offset failure")
+	}
+	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
+}
+
+// TestRedirectedNodeOffset_ValidatesEveryMarker verifies redirect forms either
+// resolve within the extended tree or fail before decoding an invalid address.
+func TestRedirectedNodeOffset_ValidatesEveryMarker(t *testing.T) {
+	buffer := newOsonBuffer(drvCommon.B1Array{
+		osonOpUpdateForwardUB4, 0x00, 0x00, 0x00, 0x00,
+		osonOpTrue,
+	})
+	header := &osonHeader{
+		treeSegmentStartOffset:         0,
+		treeSegmentByteLength:          5,
+		extendedTreeSegmentStartOffset: 5,
+		extendedTreeSegmentByteLength:  1,
+	}
+	if got, redirected, err := redirectedNodeOffset(buffer, header, 0, osonOpUpdateForwardUB4); err != nil || !redirected || got != 5 {
+		t.Fatalf("UB4 redirect = %d, %t, %v; want 5, true, nil", got, redirected, err)
+	}
+	if _, _, err := redirectedNodeOffset(buffer, header, 0, osonOpUpdateOverflow); err == nil {
+		t.Fatal("overflow redirect error = nil, want missing-map failure")
+	}
+	if _, _, err := redirectedNodeOffset(buffer, header, 0, osonOpUpdateOversizeReserved); err == nil {
+		t.Fatal("reserved-growth redirect error = nil, want unsupported-opcode failure")
+	}
+}
+
+// TestParse_RejectsInvalidUpdateTargets verifies update redirects remain
+// inside the declared extended tree segment.
+func TestParse_RejectsInvalidUpdateTargets(t *testing.T) {
+	tests := []struct {
+		name   string
+		sample osonSample
+		mutate func(drvCommon.B1Array, *osonHeader)
+		want   oracleErrors.ErrorCode
+	}{
+		{"overflow map target", sampleUpdatedOverflow, func(doc drvCommon.B1Array, header *osonHeader) {
+			updateOffset := header.treeSegmentOffset() + int(header.treeSegmentByteLength)
+			binary.BigEndian.PutUint16(doc[updateOffset+18:], 0xffff)
+		}, oracleErrors.OsonHeaderError},
+		{"inline UB2 target", sampleUpdatedForwardUB2, func(doc drvCommon.B1Array, header *osonHeader) {
+			for offset := header.treeSegmentOffset(); offset < header.treeSegmentOffset()+int(header.treeSegmentByteLength); offset++ {
+				if doc[offset] == byte(osonOpUpdateForwardUB2) {
+					binary.BigEndian.PutUint16(doc[offset+1:], 0xffff)
+					return
+				}
+			}
+			t.Fatal("fixture does not contain an UB2 forwarding opcode")
+		}, oracleErrors.OsonParsingError},
+		{"inline UB4 target", sampleUpdatedForwardUB4, func(doc drvCommon.B1Array, header *osonHeader) {
+			for offset := header.treeSegmentOffset(); offset < header.treeSegmentOffset()+int(header.treeSegmentByteLength); offset++ {
+				if doc[offset] == byte(osonOpUpdateForwardUB4) {
+					binary.BigEndian.PutUint32(doc[offset+1:], 0xffffffff)
+					return
+				}
+			}
+			t.Fatal("fixture does not contain an UB4 forwarding opcode")
+		}, oracleErrors.OsonParsingError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			doc := test.sample.cloneOSON()
+			header, err := newOsonHeader(newOsonBuffer(doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(doc, header)
+			root, err := Parse(doc)
+			if err == nil {
+				_, err = root.GetValue(drvCommon.JSONOptNumberAsString)
+			}
+			if err == nil {
+				t.Fatal("GetValue() error = nil, want invalid-forward-target failure")
+			} else {
+				assertOracleErrorCode(t, err, test.want)
+			}
+		})
+	}
+}
+
+// TestParse_RejectsForwardingCycle verifies public materialization rejects a
+// cycle introduced into the extended tree of an Oracle-produced update image.
+func TestParse_RejectsForwardingCycle(t *testing.T) {
+	doc := sampleUpdatedForwardUB2.cloneOSON()
+	header, err := newOsonHeader(newOsonBuffer(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	forwardOffset := -1
+	for offset := header.treeSegmentOffset(); offset < header.treeSegmentOffset()+int(header.treeSegmentByteLength); offset++ {
+		if doc[offset] == byte(osonOpUpdateForwardUB2) {
+			forwardOffset = int(binary.BigEndian.Uint16(doc[offset+1:]))
+			break
+		}
+	}
+	if forwardOffset < 0 {
+		t.Fatal("fixture does not contain an UB2 forwarding opcode")
+	}
+	extendedOffset := header.extendedTreeSegmentStartOffset + forwardOffset
+	doc[extendedOffset] = byte(osonOpUpdateForwardUB2)
+	binary.BigEndian.PutUint16(doc[extendedOffset+1:], uint16(forwardOffset))
+
+	root, err := Parse(doc)
+	if err == nil {
+		_, err = root.GetValue(drvCommon.JSONOptDefault)
+	}
+	if err == nil {
+		t.Fatal("GetValue() error = nil, want forwarding-cycle failure")
+	}
+	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 }

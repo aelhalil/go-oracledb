@@ -41,6 +41,7 @@ import (
 	"encoding/binary"
 	stdjson "encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -573,9 +574,9 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 // The opcode family is selected from the encoded byte length:
 //
 //	0..31       => [length opcode][bytes]
-//	32..254     => [0x33][UB1 length][bytes]
-//	255..65534  => [0x37][UB2 length][bytes]
-//	65535..UB4  => [0x38][UB4 length][bytes]
+//	32..255     => [0x33][UB1 length][bytes]
+//	256..65535  => [0x37][UB2 length][bytes]
+//	65536..UB4  => [0x38][UB4 length][bytes]
 func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) error {
 	raw := []byte(value)
 	if len(raw) > _maxUB4 {
@@ -587,10 +588,10 @@ func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) e
 	switch {
 	case len(raw) <= int(osonOpShortStringMax):
 		tree.writeUB1(drvCommon.UB1(len(raw)))
-	case len(raw) < _maxUB1:
+	case len(raw) <= _maxUB1:
 		tree.writeUB1(osonOpStringUB1)
 		tree.writeUB1(drvCommon.UB1(len(raw)))
-	case len(raw) < _maxUB2:
+	case len(raw) <= _maxUB2:
 		tree.writeUB1(osonOpStringUB2)
 		tree.writeUB2(drvCommon.UB2(len(raw)))
 	default:
@@ -658,7 +659,7 @@ func (enc *osonEncoder) writeUnsignedIntScalar(tree *osonWriteBuffer, value uint
 
 // writeStringNumberScalar writes a JSON number as string.
 func (enc *osonEncoder) writeStringNumberScalar(tree *osonWriteBuffer, value string) error {
-	if value == "" || strings.TrimSpace(value) != value || !stdjson.Valid([]byte(value)) {
+	if !isJSONNumber(value) {
 		cause := fmt.Errorf("invalid JSON number text")
 		common.Odl.Error("osonEncoder.writeStringNumberScalar: failed", "error", cause, "length", len(value))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, value)
@@ -677,6 +678,27 @@ func (enc *osonEncoder) writeStringNumberScalar(tree *osonWriteBuffer, value str
 
 	common.Odl.Debug("osonEncoder.writeStringNumberScalar: string number", "payloadLength", len(raw))
 	return nil
+}
+
+// isJSONNumber reports whether value is exactly one RFC 8259 number token.
+func isJSONNumber(value string) bool {
+	if value == "" || strings.TrimSpace(value) != value {
+		return false
+	}
+
+	decoder := stdjson.NewDecoder(strings.NewReader(value))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return false
+	}
+	if _, ok := decoded.(stdjson.Number); !ok {
+		return false
+	}
+	// A second decode must reach EOF; otherwise the input contained another
+	// token after the number.
+	var trailing any
+	return decoder.Decode(&trailing) == io.EOF
 }
 
 // writeBinaryFloatScalar writes a fixed-width binary float scalar.
@@ -715,7 +737,7 @@ func (enc *osonEncoder) writeBinaryScalar(tree *osonWriteBuffer, value drvCommon
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, len(value))
 	}
 
-	if len(value) < _maxUB2 {
+	if len(value) <= _maxUB2 {
 		tree.writeUB1(osonOpBinaryUB2)
 		tree.writeUB2(drvCommon.UB2(len(value)))
 	} else {
@@ -754,9 +776,9 @@ func containerOpcode(base drvCommon.UB1, count, childOffsetSize int) drvCommon.U
 		opcode |= osonOpChildOffsetUB4Bit
 	}
 	switch {
-	case count >= _maxUB2:
+	case count > _maxUB2:
 		opcode |= osonOpChildCountUB4
-	case count >= _maxUB1:
+	case count > _maxUB1:
 		opcode |= osonOpChildCountUB2
 	default:
 		opcode |= osonOpChildCountUB1
@@ -885,9 +907,9 @@ func (b *osonWriteBuffer) reserve(length int) int {
 // writeContainerCount appends a container child/member count.
 func (b *osonWriteBuffer) writeContainerCount(count int) {
 	switch {
-	case count >= _maxUB2:
+	case count > _maxUB2:
 		b.writeUB4(drvCommon.UB4(count))
-	case count >= _maxUB1:
+	case count > _maxUB1:
 		b.writeUB2(drvCommon.UB2(count))
 	default:
 		b.writeUB1(drvCommon.UB1(count))

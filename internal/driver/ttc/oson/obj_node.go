@@ -105,6 +105,11 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNo
 			common.Odl.Error("newObjectNodeAt: failed", "error", cause, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
 			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 		}
+		if _, exists := members[fieldName]; exists {
+			cause := fmt.Errorf("duplicate field id %d", fieldIDValues[i])
+			common.Odl.Error("newObjectNodeAt: failed", "error", cause, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		}
 		members[fieldName] = memberOffsets[i]
 	}
 
@@ -134,6 +139,9 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNo
 //   - buffer-read failure or UB4 conversion failure.
 func readFieldIDEntriesAt(buf *osonBuffer, header *osonHeader, start, count int) ([]int, error) {
 	size := header.numFieldIDBytes()
+	if err := ensureNodeTableRange(buf, start, count, size, "readFieldIDEntriesAt"); err != nil {
+		return nil, err
+	}
 	entries := make([]int, count)
 	for i := 0; i < count; i++ {
 		entryOffset := start + (i * size)
@@ -330,7 +338,7 @@ func (obj *objectNode) StringWithOption(opts drvCommon.JSONOption) (string, erro
 		return "", err
 	}
 
-	text, err := json.Marshal(value)
+	text, err := json.Marshal(jsonCompatibleValue(value))
 	if err != nil {
 		common.Odl.Error("objectNode.StringWithOption: failed", "error", err, "offset", obj.offset)
 		return "", common.NewOracleError(oracleErrors.OsonBufferError, nil)

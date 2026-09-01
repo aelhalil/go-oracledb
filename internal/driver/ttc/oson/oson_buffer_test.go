@@ -62,6 +62,58 @@ func TestOsonBuffer_NewBufferInitialState(t *testing.T) {
 	}
 }
 
+// TestOsonBuffer_RejectsInvalidInternalCursor verifies reads remain safe if a
+// caller corrupts the internal cursor position.
+func TestOsonBuffer_RejectsInvalidInternalCursor(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		position int
+	}{
+		{name: "negative", position: -1},
+		{name: "past end", position: 4},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			buffer := newOsonBuffer(drvCommon.B1Array{0x01, 0x02, 0x03})
+			buffer.pos = test.position
+			if got := buffer.remaining(); got != 0 {
+				t.Fatalf("remaining() = %d, want 0", got)
+			}
+			if err := buffer.ensureAvailable(1); err == nil {
+				t.Fatal("ensureAvailable() error = nil, want invalid cursor failure")
+			} else {
+				assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		data drvCommon.B1Array
+		read func(*osonBuffer) error
+	}{
+		{
+			data: nil,
+			read: func(buffer *osonBuffer) error {
+				_, err := buffer.readUB1()
+				return err
+			},
+		},
+		{
+			data: drvCommon.B1Array{0x01, 0x02, 0x03},
+			read: func(buffer *osonBuffer) error {
+				_, err := buffer.readUB4()
+				return err
+			},
+		},
+	} {
+		buffer := newOsonBuffer(test.data)
+		if err := test.read(buffer); err == nil {
+			t.Fatal("sequential read error = nil, want underflow")
+		} else {
+			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+		}
+	}
+}
+
 // TestOsonBuffer_SetPositionValidatesBounds verifies valid boundary positions
 // and preserves the cursor when an invalid position is rejected.
 func TestOsonBuffer_SetPositionValidatesBounds(t *testing.T) {
@@ -122,27 +174,6 @@ func TestOsonBuffer_ReadsSequentialValues(t *testing.T) {
 			data:    drvCommon.B1Array{0x01, 0x02, 0x03, 0x04},
 			read:    func(b *osonBuffer) (any, error) { return b.readUB4() },
 			want:    drvCommon.UB4(0x01020304),
-			wantPos: 4,
-		},
-		{
-			name:    "readSB1",
-			data:    drvCommon.B1Array{0x80},
-			read:    func(b *osonBuffer) (any, error) { return b.readSB1() },
-			want:    drvCommon.SB1(-128),
-			wantPos: 1,
-		},
-		{
-			name:    "readSB2",
-			data:    drvCommon.B1Array{0xff, 0xfe},
-			read:    func(b *osonBuffer) (any, error) { return b.readSB2() },
-			want:    drvCommon.SB2(-2),
-			wantPos: 2,
-		},
-		{
-			name:    "readSB4",
-			data:    drvCommon.B1Array{0xff, 0xff, 0xff, 0xfe},
-			read:    func(b *osonBuffer) (any, error) { return b.readSB4() },
-			want:    drvCommon.SB4(-2),
 			wantPos: 4,
 		},
 		{

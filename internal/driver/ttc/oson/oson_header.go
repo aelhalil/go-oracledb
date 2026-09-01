@@ -41,7 +41,7 @@ package oson
 import (
 	"encoding/binary"
 	"fmt"
-	"slices"
+	"unicode/utf8"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -74,17 +74,6 @@ type dictionary struct {
 	fieldNames []string
 }
 
-// allFieldNames returns a copy of the ordered field-name list.
-//
-// Output:
-//   - A copy that callers may modify without changing the dictionary.
-func (d dictionary) allFieldNames() []string {
-	// Return a defensive copy so callers cannot mutate header state.
-	names := make([]string, len(d.fieldNames))
-	copy(names, d.fieldNames)
-	return names
-}
-
 // fieldNameAt resolves a zero-based field index from the merged dictionary.
 func (d dictionary) fieldNameAt(fid int) (string, bool) {
 	// Negative ids are always invalid.
@@ -96,45 +85,6 @@ func (d dictionary) fieldNameAt(fid int) (string, bool) {
 		return d.fieldNames[fid], true
 	}
 	return "", false
-}
-
-// fieldIDForKey resolves a key to its 1-based field ID from the merged dictionary.
-//
-// Input:
-//   - key: UTF-8 field name to locate.
-//   - primaryCount: number of leading entries in the primary dictionary tier.
-//
-// Output:
-//   - The 1-based field ID, or -1 if key is absent or primaryCount is inconsistent.
-func (d dictionary) fieldIDForKey(key string, primaryCount int) int {
-	fullHash, utfLen := osonHash(key)
-
-	// reject inconsistent dictionary metadata
-	if primaryCount < 0 || primaryCount > len(d.fieldNames) {
-		return -1
-	}
-
-	// field-names inside primary dict use compact UB1 hashes
-	if utfLen <= osonMaxPrimaryDictKeyLength && primaryCount > 0 {
-		hash := compactPrimaryHash(fullHash, osonPrimaryDictHashIDSizeUB1)
-		return locateFieldId(hash, key, dictionary{
-			hashIDs:    d.hashIDs[:primaryCount],
-			fieldNames: d.fieldNames[:primaryCount],
-		})
-	}
-
-	// field-names inside secondary dict use compact UB2 hashes
-	if utfLen <= osonMaxSecondaryDictKeyLength && primaryCount < len(d.fieldNames) {
-		hash := compactSecondaryHash(fullHash)
-		if idx := locateFieldId(hash, key, dictionary{
-			hashIDs:    d.hashIDs[primaryCount:],
-			fieldNames: d.fieldNames[primaryCount:],
-		}); idx > 0 {
-			return primaryCount + idx
-		}
-	}
-
-	return -1
 }
 
 // osonHeader stores the parsed metadata needed to read one OSON document.
@@ -173,6 +123,8 @@ type osonHeader struct {
 
 	// extendedTreeSegmentStartOffset is the absolute offset of the extended tree segment.
 	extendedTreeSegmentStartOffset int
+	// extendedTreeSegmentByteLength is the declared length of the extended tree segment.
+	extendedTreeSegmentByteLength drvCommon.UB4
 
 	// forwardingAddresses maps tree-relative offsets from the base tree to the extended tree.
 	forwardingAddresses map[int]int
@@ -318,8 +270,8 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
 	}
 
-	// reserved
-	if _, err := buf.readUB4(); err != nil {
+	reserved, err := buf.readUB4()
+	if err != nil {
 		common.Odl.Error("osonHeader.readOptionalUpdateHeader: failed", "error", err, "step", "reserved")
 		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
 	}
@@ -336,6 +288,16 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 
 	mappingBytes := int(mappingSegmentSize)
 	extendedBytes := int(extendedTreeSize)
+	if h.formatVersion != 2 && h.formatVersion != 4 {
+		cause := fmt.Errorf("update metadata is not valid for OSON version %d", h.formatVersion)
+		common.Odl.Error("osonHeader.readOptionalUpdateHeader: failed", "error", cause)
+		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
+	}
+	if flags&^osonFlagUpdateOverflowSegmentUB2Mask != 0 || reserved != 0 {
+		cause := fmt.Errorf("invalid OSON update header flags or reserved bytes")
+		common.Odl.Error("osonHeader.readOptionalUpdateHeader: failed", "error", cause, "flags", flags, "reserved", reserved)
+		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
+	}
 
 	mappingOffset := buf.position()
 	if err := buf.ensureRange(mappingOffset, mappingBytes, "osonHeader.readOptionalUpdateHeader"); err != nil {
@@ -352,6 +314,12 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 		common.Odl.Error("osonHeader.readOptionalUpdateHeader: failed", "error", err, "extendedTreeOffset", h.extendedTreeSegmentStartOffset, "extendedTreeBytes", extendedBytes)
 		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
 	}
+	if h.extendedTreeSegmentStartOffset+extendedBytes != buf.size() {
+		cause := fmt.Errorf("unexpected trailing bytes after extended tree segment")
+		common.Odl.Error("osonHeader.readOptionalUpdateHeader: failed", "error", cause)
+		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
+	}
+	h.extendedTreeSegmentByteLength = extendedTreeSize
 
 	h.forwardingAddresses = make(map[int]int, int(numMappings))
 	entrySize := osonUpdateMappingEntrySizeUB4
@@ -376,7 +344,9 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 				common.Odl.Error("osonHeader.readOptionalUpdateHeader: failed", "error", err, "index", i, "width", osonUB2Size)
 				return common.NewOracleError(oracleErrors.OsonHeaderError, err)
 			}
-			h.forwardingAddresses[int(from)] = int(to)
+			if err := h.addForwardingAddress(int(from), int(to), extendedBytes); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -393,7 +363,9 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 			return common.NewOracleError(oracleErrors.OsonHeaderError, err)
 		}
 
-		h.forwardingAddresses[int(from)] = int(to)
+		if err := h.addForwardingAddress(int(from), int(to), extendedBytes); err != nil {
+			return err
+		}
 	}
 
 	common.Odl.Debug("osonHeader.readOptionalUpdateHeader: parsed",
@@ -402,6 +374,27 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 		"mappingBytes", mappingBytes,
 		"extendedTreeOffset", h.extendedTreeSegmentStartOffset,
 		"extendedTreeBytes", extendedBytes)
+	return nil
+}
+
+// addForwardingAddress validates one update-map entry before retaining it.
+func (h *osonHeader) addForwardingAddress(from, to, extendedTreeSize int) error {
+	if from < 0 || from >= int(h.treeSegmentByteLength) {
+		cause := fmt.Errorf("update mapping source offset %d is outside the primary tree", from)
+		common.Odl.Error("osonHeader.addForwardingAddress: failed", "error", cause, "from", from)
+		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
+	}
+	if to < 0 || to >= extendedTreeSize {
+		cause := fmt.Errorf("update mapping target offset %d is outside the extended tree", to)
+		common.Odl.Error("osonHeader.addForwardingAddress: failed", "error", cause, "to", to)
+		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
+	}
+	if _, exists := h.forwardingAddresses[from]; exists {
+		cause := fmt.Errorf("duplicate update mapping source offset %d", from)
+		common.Odl.Error("osonHeader.addForwardingAddress: failed", "error", cause, "from", from)
+		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
+	}
+	h.forwardingAddresses[from] = to
 	return nil
 }
 
@@ -449,6 +442,11 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 	if h.flags, err = buf.readUB2(); err != nil {
 		common.Odl.Error("osonHeader.readHeader: failed", "error", err, "step", "flags")
 		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+	}
+	if h.flags&osonFlagReservedMask != 0 {
+		cause := fmt.Errorf("reserved OSON root-header flags are set")
+		common.Odl.Error("osonHeader.readHeader: failed", "error", cause, "flags", h.flags)
+		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 	}
 
 	// scalar documents do not carry dictionaries or tiny-node statistics.
@@ -511,6 +509,11 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 		if h.secondaryFlags, err = buf.readUB2(); err != nil {
 			common.Odl.Error("osonHeader.readHeader: failed", "error", err, "step", "flags2")
 			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		}
+		if h.secondaryFlags&osonFlagSecondaryReservedMask != 0 {
+			cause := fmt.Errorf("reserved OSON secondary-header flags are set")
+			common.Odl.Error("osonHeader.readHeader: failed", "error", cause, "flags", h.secondaryFlags)
+			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 		}
 		val, err := buf.readUB4()
 		if err != nil {
@@ -650,7 +653,13 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 			common.Odl.Error("osonHeader.readPrimaryDictionary: failed", "error", cause, "offset", offset, "length", length, "remaining", len(entry))
 			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 		}
-		names[i] = string(entry[:length])
+		nameBytes := entry[:length]
+		if !utf8.Valid(nameBytes) {
+			cause := fmt.Errorf("entry at %d contains invalid UTF-8", offset)
+			common.Odl.Error("osonHeader.readPrimaryDictionary: failed", "error", cause, "offset", offset)
+			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
+		}
+		names[i] = string(nameBytes)
 	}
 
 	h.fieldDictionary.hashIDs = append(h.fieldDictionary.hashIDs, hashIDs...)
@@ -749,7 +758,13 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 			common.Odl.Error("osonHeader.readSecondaryDictionary: failed", "error", cause, "offset", offset, "length", length, "remaining", len(entry))
 			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 		}
-		names[i] = string(entry[:length])
+		nameBytes := entry[:length]
+		if !utf8.Valid(nameBytes) {
+			cause := fmt.Errorf("entry at %d contains invalid UTF-8", offset)
+			common.Odl.Error("osonHeader.readSecondaryDictionary: failed", "error", cause, "offset", offset)
+			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
+		}
+		names[i] = string(nameBytes)
 	}
 
 	h.fieldDictionary.hashIDs = append(h.fieldDictionary.hashIDs, hashIDs...)
@@ -882,7 +897,7 @@ func (h *osonHeader) relativeOffsets() bool {
 
 // fieldsSorted reports whether object field IDs are globally declared sorted.
 func (h *osonHeader) fieldsSorted() bool {
-	return !h.isSet(osonFlagObjectFieldsUnsortedMask)
+	return !h.isSet(osonFlagObjectFIDsUnsortedMask)
 }
 
 // numFieldIDBytes returns the size used by encoded object field-ID entries.
@@ -915,19 +930,6 @@ func (h *osonHeader) version() drvCommon.UB1 {
 	return h.formatVersion
 }
 
-// uniqueFields returns the number of distinct field names in the dictionary.
-func (h *osonHeader) uniqueFields() int {
-	return len(h.fieldDictionary.fieldNames)
-}
-
-// fieldNames returns the ordered field names across both dictionaries.
-//
-// Output:
-//   - A copy in primary-then-secondary dictionary order.
-func (h *osonHeader) fieldNames() []string {
-	return h.fieldDictionary.allFieldNames()
-}
-
 // fieldName returns a field name by zero-based dictionary index.
 //
 // Input:
@@ -937,31 +939,6 @@ func (h *osonHeader) fieldNames() []string {
 //   - The matching name and true, or an empty string and false when fid is invalid.
 func (h *osonHeader) fieldName(fid int) (string, bool) {
 	return h.fieldDictionary.fieldNameAt(fid)
-}
-
-// fieldID resolves a field name to the 1-based field id used inside object
-// member entries.
-//
-// The lookup first chooses the correct dictionary tier from the UTF-8 key
-// length, then binary-searches the sorted hash array, and finally scans across
-// any hash collisions to confirm the exact string.
-//
-// Input:
-//   - key: UTF-8 field name to resolve.
-//
-// Output:
-//   - The 1-based object field ID, or -1 if key is absent or unsupported by the dictionary tiers.
-func (h *osonHeader) fieldID(key string) int {
-	return h.fieldDictionary.fieldIDForKey(key, h.primaryFieldsCount)
-}
-
-// treeSegmentSize returns the declared primary tree-segment size.
-//
-// Output:
-//   - Encoded primary tree length in bytes.
-func (h *osonHeader) treeSegmentSize() drvCommon.UB4 {
-	// This is the encoded byte length, not the current buffer remaining count.
-	return h.treeSegmentByteLength
 }
 
 // treeSegmentOffset returns the absolute document offset of the primary tree segment.
@@ -991,9 +968,21 @@ func (h *osonHeader) segmentOffsetForNode(absoluteOffset int) int {
 	return h.treeSegmentStartOffset
 }
 
-// tinyNodeCount returns the number of tiny nodes recorded in the header statistics.
-func (h *osonHeader) tinyNodeCount() drvCommon.UB2 {
-	return h.tinyNodeStatCount
+// containsNodeOffset rejects forwarding targets outside the declared tree
+// segments before node parsing reads an opcode from them.
+func (h *osonHeader) containsNodeOffset(absoluteOffset int) bool {
+	if h.treeSegmentByteLength == 0 && h.extendedTreeSegmentByteLength == 0 {
+		return true
+	}
+	primaryEnd := h.treeSegmentStartOffset + int(h.treeSegmentByteLength)
+	if absoluteOffset >= h.treeSegmentStartOffset && absoluteOffset < primaryEnd {
+		return true
+	}
+	if h.extendedTreeSegmentStartOffset == 0 {
+		return false
+	}
+	extendedEnd := h.extendedTreeSegmentStartOffset + int(h.extendedTreeSegmentByteLength)
+	return absoluteOffset >= h.extendedTreeSegmentStartOffset && absoluteOffset < extendedEnd
 }
 
 // resolveForwardedOffset maps one extended-tree-relative offset to an absolute document offset.
@@ -1007,7 +996,7 @@ func (h *osonHeader) tinyNodeCount() drvCommon.UB2 {
 // Errors:
 //   - Returns common.OsonParsingError when the document has no extended tree segment.
 func (h *osonHeader) resolveForwardedOffset(relativeOffset int) (int, error) {
-	if h.extendedTreeSegmentStartOffset == 0 {
+	if h.extendedTreeSegmentStartOffset == 0 || relativeOffset < 0 || relativeOffset >= int(h.extendedTreeSegmentByteLength) {
 		cause := fmt.Errorf("forwarded node requires an extended tree segment")
 		common.Odl.Error("osonHeader.resolveForwardedOffset: failed", "error", cause, "relativeOffset", relativeOffset)
 		return 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
@@ -1043,56 +1032,6 @@ func (h *osonHeader) resolveOverflowOffset(absoluteOffset int) (int, error) {
 		return 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 	}
 	return h.resolveForwardedOffset(forwarded)
-}
-
-// locateFieldId performs a binary search on dictionary hash IDs and resolves
-// same-hash collisions by comparing the actual key text.
-//
-// Input:
-//   - hash: compact hash appropriate for dict's tier.
-//   - key: original UTF-8 field name used to disambiguate collisions.
-//   - dict: dictionary with parallel, hash-sorted hashIDs and fieldNames slices.
-//
-// Output:
-//   - A 1-based index within dict, or -1 when key is absent.
-func locateFieldId(hash uint32, key string, dict dictionary) int {
-	// Hash arrays are sorted on the wire, so use binary search for the first hit.
-	idx, found := slices.BinarySearch(dict.hashIDs, hash)
-	if !found {
-		return -1
-	}
-
-	// walk back to the first matching hash so collisions can be scanned linearly.
-	for idx > 0 && dict.hashIDs[idx-1] == hash {
-		idx--
-	}
-
-	// then walk forward until the exact key is found or the hash range ends.
-	for idx < len(dict.hashIDs) && dict.hashIDs[idx] == hash {
-		if dict.fieldNames[idx] == key {
-			return idx + 1
-		}
-		idx++
-	}
-	return -1
-}
-
-// ohash computes the tier-specific compact hash used by dictionary fixtures.
-//
-// Input:
-//   - key: UTF-8 field name to hash.
-//
-// Output:
-//   - Compact primary or secondary hash and the key's UTF-8 byte length.
-func ohash(key string) (uint32, int) {
-	// Build the full hash first, then compact it according to the dictionary tier.
-	hash, length := osonHash(key)
-
-	if length <= osonMaxPrimaryDictKeyLength {
-		return compactPrimaryHash(hash, osonPrimaryDictHashIDSizeUB1), length
-	}
-
-	return compactSecondaryHash(hash), length
 }
 
 // osonHash computes the full 32-bit FNV-derived field-name hash.

@@ -40,8 +40,10 @@ package oson
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -79,13 +81,13 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 		},
 		{
 			name:       "max uint8 length string",
-			value:      strings.Repeat("c", 254),
+			value:      strings.Repeat("c", _maxUB1),
 			wantOpcode: osonOpStringUB1,
 			wantHeader: osonScalarHeaderSizeUB1,
 		},
 		{
 			name:       "uint16 boundary string",
-			value:      strings.Repeat("c", 255),
+			value:      strings.Repeat("c", _maxUB1+1),
 			wantOpcode: osonOpStringUB2,
 			wantHeader: osonScalarHeaderSizeUB2,
 		},
@@ -94,6 +96,18 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 			value:      strings.Repeat("d", 256),
 			wantOpcode: osonOpStringUB2,
 			wantHeader: osonScalarHeaderSizeUB2,
+		},
+		{
+			name:       "max uint16 length string",
+			value:      strings.Repeat("e", _maxUB2),
+			wantOpcode: osonOpStringUB2,
+			wantHeader: osonScalarHeaderSizeUB2,
+		},
+		{
+			name:       "uint32 boundary string",
+			value:      strings.Repeat("f", _maxUB2+1),
+			wantOpcode: osonOpStringUB4,
+			wantHeader: osonScalarHeaderSizeUB4,
 		},
 		{
 			name:       "utf8 byte length string",
@@ -129,10 +143,14 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 			}
 
 			wantTreeSize := len([]byte(tt.value)) + tt.wantHeader
-			if got := int(header.treeSegmentSize()); got != wantTreeSize {
+			if got := int(header.treeSegmentByteLength); got != wantTreeSize {
 				t.Fatalf("treeSegmentSize = %d, want %d", got, wantTreeSize)
 			}
-			if got, want := header.treeSegmentOffset(), osonHeaderMinSize+osonUB2Size; got != want {
+			treeSizeWidth := osonUB2Size
+			if wantTreeSize > _maxUB2 {
+				treeSizeWidth = osonUB4Size
+			}
+			if got, want := header.treeSegmentOffset(), osonHeaderMinSize+treeSizeWidth; got != want {
 				t.Fatalf("treeSegmentOffset = %d, want %d", got, want)
 			}
 
@@ -155,7 +173,7 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 // TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2 verifies that
 // large scalar documents switch the tree-size header field from UB2 to UB4.
 func TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2(t *testing.T) {
-	value := strings.Repeat("x", _maxUB2)
+	value := strings.Repeat("x", _maxUB2+1)
 	doc, err := Encode(value)
 	if err != nil {
 		t.Fatalf("Encode returned error: %v", err)
@@ -172,7 +190,7 @@ func TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2(t *testing.
 	if !header.isSet(osonFlagTreeSegmentSizeUB4Mask) {
 		t.Fatal("tree size UB4 flag is not set")
 	}
-	if got, want := int(header.treeSegmentSize()), len(value)+osonScalarHeaderSizeUB4; got != want {
+	if got, want := int(header.treeSegmentByteLength), len(value)+osonScalarHeaderSizeUB4; got != want {
 		t.Fatalf("treeSegmentSize = %d, want %d", got, want)
 	}
 	if got := doc[header.treeSegmentOffset()]; got != byte(osonOpStringUB4) {
@@ -213,7 +231,7 @@ func TestEncodeContainers_EncodesNestedObjectAndArray(t *testing.T) {
 	if got, want := header.version(), drvCommon.UB1(osonFormatMinVersion); got != want {
 		t.Fatalf("version = %d, want %d", got, want)
 	}
-	if got, want := header.uniqueFields(), 4; got != want {
+	if got, want := len(header.fieldDictionary.fieldNames), 4; got != want {
 		t.Fatalf("uniqueFields = %d, want %d", got, want)
 	}
 	opcode, err := buf.readUB1At(header.treeSegmentOffset())
@@ -223,12 +241,6 @@ func TestEncodeContainers_EncodesNestedObjectAndArray(t *testing.T) {
 	if opcode&osonOpChildOffsetUB4Bit == 0 {
 		t.Fatalf("root opcode = 0x%02x has unknown offset bit, want UB4", opcode)
 	}
-	for _, key := range []string{"name", "tags", "profile", "city"} {
-		if got := header.fieldID(key); got <= 0 {
-			t.Fatalf("fieldID(%q) = %d, want positive field id", key, got)
-		}
-	}
-
 	assertEncodedValueDecodesTo(t, doc, value)
 }
 
@@ -246,7 +258,7 @@ func TestEncodeContainers_EncodesArrayRootWithoutDictionary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newOsonHeader returned error: %v", err)
 	}
-	if got, want := header.uniqueFields(), 0; got != want {
+	if got, want := len(header.fieldDictionary.fieldNames), 0; got != want {
 		t.Fatalf("uniqueFields = %d, want %d", got, want)
 	}
 	assertEncodedValueDecodesTo(t, doc, value)
@@ -276,6 +288,27 @@ func TestEncodeContainers_ProducesDeterministicBytesForObjectMaps(t *testing.T) 
 		if !reflect.DeepEqual(next, first) {
 			t.Fatalf("Encode iteration %d produced non-deterministic bytes", i)
 		}
+	}
+}
+
+// TestFieldNameSortingOrder verifies field-name dictionary entries are ordered
+// by hash, byte length, then UTF-8 bytes.
+func TestFieldNameSortingOrder(t *testing.T) {
+	fields := []*fieldNameEntry{
+		{hash: 2, raw: drvCommon.B1Array("z")},
+		{hash: 1, raw: drvCommon.B1Array("b")},
+		{hash: 1, raw: drvCommon.B1Array("ab")},
+		{hash: 1, raw: drvCommon.B1Array("aa")},
+	}
+
+	sortFieldNames(fields)
+
+	got := make([]string, len(fields))
+	for i, field := range fields {
+		got[i] = string(field.raw)
+	}
+	if want := []string{"b", "aa", "ab", "z"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("sorted names = %q, want %q", got, want)
 	}
 }
 
@@ -315,6 +348,294 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 				}
 				return drvCommon.JSONOptDefault
 			}())
+		})
+	}
+}
+
+// TestEncodeScalarValues_SupportsEveryIntegerType verifies the JSONValue
+// integer surface is encoded and materialized without changing the value.
+func TestEncodeScalarValues_SupportsEveryIntegerType(t *testing.T) {
+	var signedIntOpcodeMask drvCommon.UB1 = osonOpCompactSigned64Prefix
+	if strconv.IntSize <= 32 {
+		signedIntOpcodeMask = osonOpCompactSigned32Prefix
+	}
+
+	tests := []struct {
+		name       string
+		value      any
+		want       drvCommon.JSONNumber
+		opcodeMask drvCommon.UB1
+	}{
+		{name: "int", value: int(-42), want: "-42", opcodeMask: signedIntOpcodeMask},
+		{name: "int8", value: int8(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
+		{name: "int16", value: int16(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
+		{name: "int32", value: int32(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
+		{name: "int64", value: int64(-42), want: "-42", opcodeMask: osonOpCompactSigned64Prefix},
+		{name: "uint", value: uint(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
+		{name: "uint8", value: uint8(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
+		{name: "uint16", value: uint16(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
+		{name: "uint32", value: uint32(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
+		{name: "uint64", value: uint64(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := Encode(tt.value)
+			if err != nil {
+				t.Fatalf("Encode() error = %v", err)
+			}
+			if got := encodedRootOpcode(t, doc); got&^0x0f != tt.opcodeMask {
+				t.Fatalf("root opcode = 0x%02x, want family 0x%02x", got, tt.opcodeMask)
+			}
+			assertEncodedValueDecodesTo(t, doc, tt.want, drvCommon.JSONOptNumberAsString)
+		})
+	}
+}
+
+// TestEncodeUnsignedInteger_UsesExplicitOracleNumber verifies an unsigned
+// value whose NUMBER payload cannot fit the compact opcode is length-prefixed.
+func TestEncodeUnsignedInteger_UsesExplicitOracleNumber(t *testing.T) {
+	value := uint64(12345678901234567890)
+	payload, err := converters.EncodeUInt(value)
+	if err != nil {
+		t.Fatalf("EncodeUInt() error = %v", err)
+	}
+	if len(payload) <= _compactOracleNumberMaxPayloadLen {
+		t.Fatalf("EncodeUInt(%d) payload length = %d, want > %d", value, len(payload), _compactOracleNumberMaxPayloadLen)
+	}
+
+	doc, err := Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	buf := newOsonBuffer(doc)
+	header, err := newOsonHeader(buf)
+	if err != nil {
+		t.Fatalf("newOsonHeader() error = %v", err)
+	}
+	offset := header.treeSegmentOffset()
+	if got := doc[offset]; got != byte(osonOpOracleNumber) {
+		t.Fatalf("opcode = 0x%02x, want 0x%02x", got, byte(osonOpOracleNumber))
+	}
+	if got := int(doc[offset+1]); got != len(payload) {
+		t.Fatalf("payload length = %d, want %d", got, len(payload))
+	}
+	if got := doc[offset+2 : offset+2+len(payload)]; !reflect.DeepEqual(got, payload) {
+		t.Fatalf("payload = %x, want %x", got, payload)
+	}
+	assertEncodedValueDecodesTo(t, doc, drvCommon.JSONNumber(strconv.FormatUint(value, 10)), drvCommon.JSONOptNumberAsString)
+}
+
+// TestEncodeStringNumber_RejectsUB1LengthOverflow verifies valid JSON number
+// text still respects the OSON string-number payload limit.
+func TestEncodeStringNumber_RejectsUB1LengthOverflow(t *testing.T) {
+	value := drvCommon.JSONNumber(strings.Repeat("9", _maxUB1+1))
+	assertEncodeOsonError(t, value)
+}
+
+// TestEncodeContainers_UsesUB2FieldIDs verifies the primary dictionary moves
+// to UB2 counts and field IDs when a document has more than 255 unique keys.
+func TestEncodeContainers_UsesUB2FieldIDs(t *testing.T) {
+	value := make(map[string]any, _maxUB1+1)
+	for i := 0; i <= _maxUB1; i++ {
+		value["field"+strconv.Itoa(i)] = "value" + strconv.Itoa(i)
+	}
+
+	doc, err := Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	header, err := newOsonHeader(newOsonBuffer(doc))
+	if err != nil {
+		t.Fatalf("newOsonHeader() error = %v", err)
+	}
+	if !header.isSet(osonFlagDistinctFieldCountUB2Mask) {
+		t.Fatal("distinct-field-count UB2 flag is not set")
+	}
+	if got, want := header.numFieldIDBytes(), osonUB2Size; got != want {
+		t.Fatalf("numFieldIDBytes() = %d, want %d", got, want)
+	}
+	if got, want := header.primaryFieldsCount, _maxUB1+1; got != want {
+		t.Fatalf("primaryFieldsCount = %d, want %d", got, want)
+	}
+	assertEncodedValueDecodesTo(t, doc, value)
+}
+
+// TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets verifies a large
+// primary field-name heap uses UB4 heap offsets without requiring v3 keys.
+func TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets(t *testing.T) {
+	value := make(map[string]any, 300)
+	keyPrefix := strings.Repeat("k", 246)
+	for i := range 300 {
+		value[keyPrefix+strconv.Itoa(i)] = "value"
+	}
+
+	doc, err := Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	header, err := newOsonHeader(newOsonBuffer(doc))
+	if err != nil {
+		t.Fatalf("newOsonHeader() error = %v", err)
+	}
+	if got, want := header.version(), drvCommon.UB1(1); got != want {
+		t.Fatalf("version = %d, want %d", got, want)
+	}
+	if !header.isSet(osonFlagFieldHeapSizeUB4Mask) {
+		t.Fatal("primary field-name heap UB4 flag is not set")
+	}
+	assertEncodedValueDecodesTo(t, doc, value)
+}
+
+// TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets verifies a large
+// long-key dictionary uses UB4 offsets and the v3 dictionary extension.
+func TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets(t *testing.T) {
+	value := make(map[string]any, 300)
+	keyPrefix := strings.Repeat("k", 253)
+	for i := range 300 {
+		value[keyPrefix+fmt.Sprintf("%03d", i)] = "value"
+	}
+
+	doc, err := Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	header, err := newOsonHeader(newOsonBuffer(doc))
+	if err != nil {
+		t.Fatalf("newOsonHeader() error = %v", err)
+	}
+	if got, want := header.version(), drvCommon.UB1(3); got != want {
+		t.Fatalf("version = %d, want %d", got, want)
+	}
+	if header.secondaryFlags&osonFlagSecondaryFieldOffsetsUB2Mask != 0 {
+		t.Fatal("secondary field-name offsets use UB2, want UB4")
+	}
+	if got, want := header.primaryFieldsCount, 0; got != want {
+		t.Fatalf("primaryFieldsCount = %d, want %d", got, want)
+	}
+	assertEncodedValueDecodesTo(t, doc, value)
+}
+
+// TestEncodeContainers_UsesAllContainerCountWidths verifies array child counts
+// use the smallest valid OSON width at each wire-format transition.
+func TestEncodeContainers_UsesAllContainerCountWidths(t *testing.T) {
+	tests := []struct {
+		name      string
+		count     int
+		countBits drvCommon.UB1
+	}{
+		{name: "ub1", count: _maxUB1, countBits: osonOpChildCountUB1},
+		{name: "ub2", count: _maxUB1 + 1, countBits: osonOpChildCountUB2},
+		{name: "ub4", count: _maxUB2 + 1, countBits: osonOpChildCountUB4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value := make([]any, tt.count)
+			doc, err := Encode(value)
+			if err != nil {
+				t.Fatalf("Encode() error = %v", err)
+			}
+
+			buf := newOsonBuffer(doc)
+			header, err := newOsonHeader(buf)
+			if err != nil {
+				t.Fatalf("newOsonHeader() error = %v", err)
+			}
+			offset := header.treeSegmentOffset()
+			opcode, err := buf.readUB1At(offset)
+			if err != nil {
+				t.Fatalf("read root opcode error = %v", err)
+			}
+			if got := opcode & osonOpChildSizeBits; got != tt.countBits {
+				t.Fatalf("child count bits = 0x%02x, want 0x%02x", got, tt.countBits)
+			}
+
+			count, _, err := readContainerCountAt(buf, offset+osonUB1Size, opcode)
+			if err != nil {
+				t.Fatalf("readContainerCountAt() error = %v", err)
+			}
+			if count != tt.count {
+				t.Fatalf("encoded count = %d, want %d", count, tt.count)
+			}
+			root, err := Parse(doc)
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			array, ok := root.(drvCommon.JSONArrayNode)
+			if !ok {
+				t.Fatalf("root type = %T, want array", root)
+			}
+			if got := array.Len(); got != tt.count {
+				t.Fatalf("Len() = %d, want %d", got, tt.count)
+			}
+		})
+	}
+}
+
+// TestEncodeTimestampScalar_UsesTimestampPayload verifies time.Time values use
+// the OSON TIMESTAMP opcode and preserve wall-clock fields and nanoseconds.
+func TestEncodeTimestampScalar_UsesTimestampPayload(t *testing.T) {
+	tests := []struct {
+		name  string
+		value time.Time
+	}{
+		{
+			name:  "whole seconds",
+			value: time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC),
+		},
+		{
+			name:  "fractional seconds",
+			value: time.Date(2024, time.January, 2, 3, 4, 5, 123456789, time.UTC),
+		},
+		{
+			name:  "fixed offset preserves wall clock",
+			value: time.Date(2024, time.January, 2, 3, 4, 5, 123456789, time.FixedZone("plus two", 2*60*60)),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := Encode(tt.value)
+			if err != nil {
+				t.Fatalf("Encode() error = %v", err)
+			}
+
+			payload, err := converters.EncodeTimestamp(tt.value)
+			if err != nil {
+				t.Fatalf("EncodeTimestamp() error = %v", err)
+			}
+			want := append(drvCommon.B1Array{osonOpTimestamp}, payload...)
+
+			buf := newOsonBuffer(doc)
+			header, err := newOsonHeader(buf)
+			if err != nil {
+				t.Fatalf("newOsonHeader() error = %v", err)
+			}
+			start := header.treeSegmentOffset()
+			got := doc[start : start+len(want)]
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("timestamp bytes = %x, want %x", got, want)
+			}
+
+			node, err := Parse(doc)
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			value, err := node.GetValue(drvCommon.JSONOptDefault)
+			if err != nil {
+				t.Fatalf("GetValue() error = %v", err)
+			}
+			gotTime, ok := value.(time.Time)
+			if !ok {
+				t.Fatalf("decoded value type = %T, want time.Time", value)
+			}
+			if gotTime.Year() != tt.value.Year() || gotTime.Month() != tt.value.Month() ||
+				gotTime.Day() != tt.value.Day() || gotTime.Hour() != tt.value.Hour() ||
+				gotTime.Minute() != tt.value.Minute() || gotTime.Second() != tt.value.Second() ||
+				gotTime.Nanosecond() != tt.value.Nanosecond() {
+				t.Fatalf("decoded time = %v, want wall-clock fields from %v", gotTime, tt.value)
+			}
 		})
 	}
 }
@@ -359,8 +680,8 @@ func TestEncodeBinaryScalars_CoverLengthBoundaries(t *testing.T) {
 	}{
 		{name: "empty binary", value: []byte{}, want: []byte(nil), wantOp: osonOpBinaryUB2},
 		{name: "small binary", value: []byte{0x01, 0x02}, want: []byte{0x01, 0x02}, wantOp: osonOpBinaryUB2},
-		{name: "max binary ub2", value: bytesForTest(_maxUB2 - 1), want: bytesForTest(_maxUB2 - 1), wantOp: osonOpBinaryUB2},
-		{name: "binary ub4 boundary", value: bytesForTest(_maxUB2), want: bytesForTest(_maxUB2), wantOp: osonOpBinaryUB4},
+		{name: "max binary ub2", value: bytesForTest(_maxUB2), want: bytesForTest(_maxUB2), wantOp: osonOpBinaryUB2},
+		{name: "binary ub4 boundary", value: bytesForTest(_maxUB2 + 1), want: bytesForTest(_maxUB2 + 1), wantOp: osonOpBinaryUB4},
 	}
 
 	for _, tt := range tests {
@@ -390,6 +711,11 @@ func TestEncodeInvalidValues_ReturnOsonEncodingError(t *testing.T) {
 		{name: "unsupported nested object child", value: map[string]any{"nested": map[string]any{"bad": struct{}{}}}},
 		{name: "unsupported nested array child", value: []any{[]any{struct{}{}}}},
 		{name: "invalid scalar text", value: drvCommon.JSONNumber("not-a-number")},
+		{name: "boolean is not a number", value: drvCommon.JSONNumber("true")},
+		{name: "null is not a number", value: drvCommon.JSONNumber("null")},
+		{name: "string is not a number", value: drvCommon.JSONNumber(`"text"`)},
+		{name: "array is not a number", value: drvCommon.JSONNumber("[]")},
+		{name: "object is not a number", value: drvCommon.JSONNumber("{}")},
 		{name: "nan scalar text", value: drvCommon.JSONNumber("NaN")},
 		{name: "infinity scalar text", value: drvCommon.JSONNumber("+Inf")},
 		{name: "field name too long", value: map[string]any{strings.Repeat("x", osonMaxSecondaryDictKeyLength+1): "value"}},
@@ -460,8 +786,8 @@ func TestEncodeContainers_SupportsLongFieldNames(t *testing.T) {
 	if got, want := header.primaryFieldsCount, 1; got != want {
 		t.Fatalf("primaryFieldsCount = %d, want %d", got, want)
 	}
-	if got := header.fieldID(longKey); got <= header.primaryFieldsCount {
-		t.Fatalf("fieldID(longKey) = %d, want secondary field id > %d", got, header.primaryFieldsCount)
+	if got := header.fieldDictionary.fieldNames[header.primaryFieldsCount]; got != longKey {
+		t.Fatalf("secondary field name = %q, want %q", got, longKey)
 	}
 	assertEncodedValueDecodesTo(t, doc, value)
 }
@@ -523,6 +849,19 @@ func TestOsonWriteBufferPatchUint_RejectsInvalidPatch(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestOsonEncoder_BufferPatchError verifies an internal offset-table failure
+// becomes a public encoding error instead of a panic or partial OSON output.
+func TestOsonEncoder_BufferPatchError(t *testing.T) {
+	buf := &osonWriteBuffer{data: make(drvCommon.B1Array, 1)}
+	patchErr := buf.patchUint(0, osonUB4Size, 1)
+	if patchErr == nil {
+		t.Fatal("patchUint() error = nil, want out-of-range failure")
+	}
+
+	err := newOsonEncoder().bufferPatchError("writeObjectNode", patchErr)
+	assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
 }
 
 // assertEncodeOsonError verifies Encode rejects value with the public OSON

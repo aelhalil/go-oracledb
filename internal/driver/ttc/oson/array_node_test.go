@@ -111,37 +111,76 @@ func TestArrayNode_NestedObjectArrayTraversal(t *testing.T) {
 	}
 }
 
-// TestArrayNode_RejectsMalformedArrayWireFormat verifies malformed OSON array layout rejection.
-func TestArrayNode_RejectsMalformedArrayWireFormat(t *testing.T) {
+// TestArrayNode_RejectsMalformedLayouts verifies malformed array layouts and
+// invalid array-only opcode combinations.
+func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 	t.Parallel()
 
-	// A scalar true opcode cannot start an OSON array node.
-	if _, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpTrue}), &osonHeader{}, 0); err == nil {
-		t.Fatal("newArrayNodeAt(non-array) error = nil, want failure")
-	} else {
-		assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
-	}
+	t.Run("non-array opcode", func(t *testing.T) {
+		if _, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpTrue}), &osonHeader{}, 0); err == nil {
+			t.Fatal("newArrayNodeAt(non-array) error = nil, want failure")
+		} else {
+			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+		}
+	})
 
-	zeroOffsetHeader := &osonHeader{treeSegmentStartOffset: 0}
-	// The child-count selector requires a two-byte UB2 count, but the fixture supplies only one byte.
-	if _, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpArrayType | osonOpChildCountUB2, 0x00}), zeroOffsetHeader, 0); err == nil {
-		t.Fatal("newArrayNodeAt(truncated count) error = nil, want failure")
-	} else {
-		assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
-	}
+	t.Run("truncated child count", func(t *testing.T) {
+		zeroOffsetHeader := &osonHeader{treeSegmentStartOffset: 0}
+		if _, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpArrayType | osonOpChildCountUB2, 0x00}), zeroOffsetHeader, 0); err == nil {
+			t.Fatal("newArrayNodeAt(truncated count) error = nil, want failure")
+		} else {
+			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+		}
+	})
 
-	// Child offsets are absolute document offsets; 9 lies beyond this one-byte test buffer.
-	invalidChildOffset := 9
-	arrayWithInvalidChildOffset := &arrayNode{
-		nodeBase:     nodeBase{buf: newOsonBuffer(drvCommon.B1Array{osonOpTrue}), header: zeroOffsetHeader},
-		childOffsets: []int{invalidChildOffset},
-	}
-	if _, ok := arrayWithInvalidChildOffset.Get(0); ok {
-		t.Fatal("Get(0) with invalid child offset found = true, want false")
-	}
-	if _, err := arrayWithInvalidChildOffset.Value(drvCommon.JSONOptDefault); err == nil {
-		t.Fatal("Value() with invalid child offset error = nil, want failure")
-	} else {
-		assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
-	}
+	t.Run("invalid child offset", func(t *testing.T) {
+		zeroOffsetHeader := &osonHeader{treeSegmentStartOffset: 0}
+		arrayWithInvalidChildOffset := &arrayNode{
+			nodeBase:     nodeBase{buf: newOsonBuffer(drvCommon.B1Array{osonOpTrue}), header: zeroOffsetHeader},
+			childOffsets: []int{9},
+		}
+		if _, ok := arrayWithInvalidChildOffset.Get(0); ok {
+			t.Fatal("Get(0) with invalid child offset found = true, want false")
+		}
+		if _, err := arrayWithInvalidChildOffset.Value(drvCommon.JSONOptDefault); err == nil {
+			t.Fatal("Value() with invalid child offset error = nil, want failure")
+		} else {
+			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+		}
+	})
+
+	t.Run("impossible child-offset table", func(t *testing.T) {
+		doc := sampleNestedArray.cloneOSON()
+		header, err := newOsonHeader(newOsonBuffer(doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		doc[header.treeSegmentOffset()+1] = 0xff
+		if _, err := Parse(doc); err == nil {
+			t.Fatal("Parse() error = nil, want impossible-offset-table failure")
+		} else {
+			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+		}
+	})
+
+	t.Run("object-only opcode flags", func(t *testing.T) {
+		header := &osonHeader{treeSegmentStartOffset: 0, treeSegmentByteLength: 2}
+		for _, test := range []struct {
+			name   string
+			opcode drvCommon.UB1
+		}{
+			{name: "unsorted field IDs", opcode: osonOpArrayType | osonOpChildNoSortBit},
+			{name: "shared field IDs", opcode: osonOpArrayType | osonOpObjectSharedFieldIDsBit},
+			{name: "overflow object", opcode: osonOpArrayType | osonOpObjectUpdateOverflowBit},
+			{name: "delegate child header", opcode: osonOpArrayType | osonOpChildDelegateForm},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				_, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{byte(test.opcode), 0x00}), header, 0)
+				if err == nil {
+					t.Fatalf("newArrayNodeAt(opcode=%#02x) error = nil, want failure", test.opcode)
+				}
+				assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
+			})
+		}
+	})
 }

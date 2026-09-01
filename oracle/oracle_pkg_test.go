@@ -268,10 +268,12 @@ var testCases = []struct {
 	{"TestServerError", "functional", false, TestServerError},
 
 	{"TestDriver_OSON_ScalarDocuments", "functional", false, TestDriver_OSON_ScalarDocuments},
-	{"TestDriver_OSON_RichObject", "functional", false, TestDriver_OSON_RichObject},
-	{"TestDriver_OSON_RichNestedArray", "functional", false, TestDriver_OSON_RichNestedArray},
+	{"TestDriver_OSON_NestedObject", "functional", false, TestDriver_OSON_NestedObject},
+	{"TestDriver_OSON_NestedArray", "functional", false, TestDriver_OSON_NestedArray},
 	{"TestDriver_OSON_LargeDocument", "functional", false, TestDriver_OSON_LargeDocument},
 	{"TestDriver_OSON_LongUTF8DictionaryKey", "functional", false, TestDriver_OSON_LongUTF8DictionaryKey},
+	{"TestDriver_OSON_JSONWrappers", "functional", false, TestDriver_OSON_JSONWrappers},
+	{"TestDriver_OSON_JSONWrapperErrors", "functional", false, TestDriver_OSON_JSONWrapperErrors},
 }
 
 func TestCategoryExecutor(t *testing.T) {

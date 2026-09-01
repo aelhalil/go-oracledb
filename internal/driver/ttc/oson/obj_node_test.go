@@ -120,6 +120,31 @@ func TestObjectNode_SimpleObjectTraversal(t *testing.T) {
 	}
 }
 
+// TestObjectNode_GetRejectsMalformedChild verifies keyed lazy access returns
+// false when a database-produced object is modified to contain an invalid
+// child redirect.
+func TestObjectNode_GetRejectsMalformedChild(t *testing.T) {
+	doc := sampleSimpleObject.cloneOSON()
+	root, err := Parse(doc)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	obj, ok := root.(*objectNode)
+	if !ok {
+		t.Fatalf("root type = %T, want *objectNode", root)
+	}
+	childOffset, ok := obj.childrenOffsets["name"]
+	if !ok {
+		t.Fatal("name child offset is missing")
+	}
+	doc[childOffset] = byte(osonOpUpdateForwardUB2)
+	binary.BigEndian.PutUint16(doc[childOffset+1:], 0xffff)
+
+	if _, ok := obj.Get("name"); ok {
+		t.Fatal("Get(name) found = true, want false for malformed child")
+	}
+}
+
 // TestObjectNode_SecondaryDictionaryTraversal verifies object lookup works across primary and secondary dictionary tiers.
 func TestObjectNode_SecondaryDictionaryTraversal(t *testing.T) {
 	t.Parallel()
@@ -165,8 +190,37 @@ func TestObjectNode_SecondaryDictionaryTraversal(t *testing.T) {
 	}
 }
 
-// TestObjectNode_RejectsMalformedFieldIDAndChildOffset verifies invalid field IDs and out-of-tree child offsets are rejected.
-func TestObjectNode_RejectsMalformedFieldIDAndChildOffset(t *testing.T) {
+// TestObjectNode_RejectsMalformedLayouts groups object-layout failures while
+// keeping each malformed wire case visible as a named subtest.
+func TestObjectNode_RejectsMalformedLayouts(t *testing.T) {
+	t.Parallel()
+	t.Run("duplicate field IDs", testObjectNodeRejectsDuplicateFieldIDs)
+	t.Run("invalid field ID and child offset", testObjectNodeRejectsMalformedFieldIDAndChildOffset)
+	t.Run("invalid opcode and truncated field IDs", testObjectNodeRejectsMalformedLayout)
+	t.Run("impossible field-ID tables", testObjectNodeRejectsImpossibleFieldIDTables)
+}
+
+// testObjectNodeRejectsDuplicateFieldIDs verifies malformed objects cannot
+// silently overwrite a member while materializing into a Go map.
+func testObjectNodeRejectsDuplicateFieldIDs(t *testing.T) {
+	doc := sampleSimpleObject.cloneOSON()
+	buf := newOsonBuffer(doc)
+	header, err := newOsonHeader(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The simple object has a UB1 FID array directly after [opcode][count].
+	fidStart := header.treeSegmentOffset() + 2
+	doc[fidStart+1] = doc[fidStart]
+	if _, err := Parse(doc); err == nil {
+		t.Fatal("Parse() error = nil, want duplicate-field-id failure")
+	} else {
+		assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
+	}
+}
+
+// testObjectNodeRejectsMalformedFieldIDAndChildOffset verifies invalid field IDs and out-of-tree child offsets are rejected.
+func testObjectNodeRejectsMalformedFieldIDAndChildOffset(t *testing.T) {
 	t.Parallel()
 	buf := newOsonBuffer(sampleSimpleObject.oson)
 	header, err := newOsonHeader(buf)
@@ -192,8 +246,8 @@ func TestObjectNode_RejectsMalformedFieldIDAndChildOffset(t *testing.T) {
 	}
 }
 
-// TestObjectNode_RejectsMalformedLayout verifies object construction fails for non-object opcodes and truncated field-ID tables.
-func TestObjectNode_RejectsMalformedLayout(t *testing.T) {
+// testObjectNodeRejectsMalformedLayout verifies object construction fails for non-object opcodes and truncated field-ID tables.
+func testObjectNodeRejectsMalformedLayout(t *testing.T) {
 	t.Parallel()
 
 	if _, err := newObjectNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpTrue}), &osonHeader{}, 0); err == nil {
@@ -211,5 +265,188 @@ func TestObjectNode_RejectsMalformedLayout(t *testing.T) {
 		t.Fatal("newObjectNodeAt(truncated field ids) error = nil, want failure")
 	} else {
 		assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+	}
+}
+
+// testObjectNodeRejectsImpossibleFieldIDTables verifies corrupted child
+// counts cannot force field-ID table allocation beyond the OSON document.
+func testObjectNodeRejectsImpossibleFieldIDTables(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(drvCommon.B1Array, int)
+	}{
+		{
+			name: "UB1 count exceeds tree",
+			mutate: func(doc drvCommon.B1Array, treeStart int) {
+				doc[treeStart+1] = 0xff
+			},
+		},
+		{
+			name: "UB4 count exceeds tree",
+			mutate: func(doc drvCommon.B1Array, treeStart int) {
+				doc[treeStart] = (doc[treeStart] &^ byte(osonOpChildSizeBits)) | byte(osonOpChildCountUB4)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			doc := sampleSimpleObject.cloneOSON()
+			header, err := newOsonHeader(newOsonBuffer(doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(doc, header.treeSegmentOffset())
+			if _, err := Parse(doc); err == nil {
+				t.Fatal("Parse() error = nil, want impossible-table failure")
+			} else {
+				assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+			}
+		})
+	}
+}
+
+// TestObjectNode_SharedOverflowUsesPrimaryTreeOffsets verifies delegated
+// objects resolve their child offsets from the primary-tree address origin.
+func TestObjectNode_SharedOverflowUsesPrimaryTreeOffsets(t *testing.T) {
+	candidate := sampleSharedObjects.cloneOSON()
+	buf := newOsonBuffer(candidate)
+	header, err := newOsonHeader(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate[3] = 0x02
+	candidate[header.treeSegmentStartOffset+0x56] = 0x87
+	candidate = append(candidate,
+		0x01, 0x00, 0x00, 0x01,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x04,
+		0x00, 0x00, 0x00, 0x08,
+		0x00, 0x56, 0x00, 0x00,
+		0x84, 0x02, 0x01, 0x02, 0x00, 0x0C, 0x00, 0x08,
+	)
+	root, err := Parse(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := root.GetValue(drvCommon.JSONOptNumberAsString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := value.(map[string]any)["identical_records"].([]any)
+	if len(records) != 32 {
+		t.Fatalf("record count = %d, want 32", len(records))
+	}
+	if _, exists := records[0].(map[string]any)["delegate_name"]; exists {
+		t.Fatal("updated primary record retains deleted field")
+	}
+	if got := records[1].(map[string]any)["delegate_name"]; got != "same" {
+		t.Fatalf("delegated record name = %v, want same", got)
+	}
+}
+
+// TestObjectNode_RejectsInvalidDelegateReferences verifies shared-FID objects
+// cannot point at another delegate object or a non-object tree node.
+func TestObjectNode_RejectsInvalidDelegateReferences(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		find func(drvCommon.B1Array, int) int
+		want oracleErrors.ErrorCode
+	}{
+		{
+			name: "delegate object points to itself",
+			want: oracleErrors.OsonParsingError,
+			find: func(doc drvCommon.B1Array, treeStart int) int {
+				for offset := treeStart; offset < len(doc); offset++ {
+					if doc[offset] == byte(0x9c) {
+						return offset
+					}
+				}
+				return -1
+			},
+		},
+		{
+			name: "delegate object points to scalar",
+			want: oracleErrors.OsonParsingError,
+			find: func(doc drvCommon.B1Array, treeStart int) int {
+				for offset := treeStart; offset < len(doc); offset++ {
+					if doc[offset] == byte(osonOpTrue) {
+						return offset
+					}
+				}
+				return -1
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			doc := sampleSharedObjects.cloneOSON()
+			header, err := newOsonHeader(newOsonBuffer(doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			delegateOffset := -1
+			for offset := header.treeSegmentOffset(); offset < len(doc); offset++ {
+				if doc[offset] == byte(0x9c) {
+					delegateOffset = offset
+					break
+				}
+			}
+			if delegateOffset < 0 {
+				t.Fatal("fixture does not contain a UB2 delegated object")
+			}
+			targetOffset := test.find(doc, header.treeSegmentOffset())
+			if targetOffset < 0 {
+				t.Fatal("fixture does not contain the requested delegate target")
+			}
+			binary.BigEndian.PutUint16(doc[delegateOffset+1:], uint16(targetOffset-header.treeSegmentOffset()))
+
+			root, err := Parse(doc)
+			if err == nil {
+				_, err = root.GetValue(drvCommon.JSONOptDefault)
+			}
+			if err == nil {
+				t.Fatal("GetValue() error = nil, want invalid-delegate failure")
+			}
+			assertOracleErrorCode(t, err, test.want)
+		})
+	}
+}
+
+func TestReadFieldIDEntriesAt_ReadsAllSupportedWidths(t *testing.T) {
+	tests := []struct {
+		name   string
+		header osonHeader
+		data   drvCommon.B1Array
+		want   []int
+	}{
+		{
+			name: "ub1",
+			data: drvCommon.B1Array{0x01, 0xFE},
+			want: []int{1, 254},
+		},
+		{
+			name:   "ub2",
+			header: osonHeader{flags: osonFlagDistinctFieldCountUB2Mask},
+			data:   drvCommon.B1Array{0x00, 0x01, 0x01, 0x00},
+			want:   []int{1, 256},
+		},
+		{
+			name:   "ub4",
+			header: osonHeader{flags: osonFlagDistinctFieldCountUB4Mask},
+			data:   drvCommon.B1Array{0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00},
+			want:   []int{1, 65536},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := readFieldIDEntriesAt(newOsonBuffer(tt.data), &tt.header, 0, len(tt.want))
+			if err != nil {
+				t.Fatalf("readFieldIDEntriesAt() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("field IDs = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

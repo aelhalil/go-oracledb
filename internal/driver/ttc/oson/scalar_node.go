@@ -42,6 +42,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -130,7 +131,16 @@ func (scalar *scalarNode) StringWithOption(opts drvCommon.JSONOption) (string, e
 		return "", err
 	}
 
-	text, err := json.Marshal(value)
+	if timestamp, ok := value.(time.Time); ok {
+		switch scalar.opcode {
+		case osonOpDate, osonOpTimestamp, osonOpTimestamp7:
+			// DATE and TIMESTAMP do not carry a timezone in their OSON payload.
+			// Avoid time.Time's default JSON form, which adds the local offset.
+			value = timestamp.Format("2006-01-02T15:04:05.999999999")
+		}
+	}
+
+	text, err := json.Marshal(jsonCompatibleValue(value))
 	if err != nil {
 		common.Odl.Error("scalarNode.StringWithOption: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
 		return "", common.NewOracleError(oracleErrors.OsonBufferError, err)
@@ -381,7 +391,7 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, err
 
 	// TIMESTAMP and TIMESTAMP7 share a decoder with different widths.
 	case opcode == osonOpTimestamp || opcode == osonOpTimestamp7:
-		payloadLen := osonTimestampPayloadSize
+		payloadLen := int(converters.MaxDateLength)
 		if opcode == osonOpTimestamp7 {
 			payloadLen = osonTimestamp7PayloadSize
 		}
@@ -397,7 +407,7 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, err
 
 	// TIMESTAMP WITH TIME ZONE uses a fixed payload.
 	case opcode == osonOpTimestampTZ:
-		raw, err := buf.readSliceAt(offset+osonUB1Size, osonTimestampTZPayloadSize)
+		raw, err := buf.readSliceAt(offset+osonUB1Size, int(converters.MaxTimeStampLength))
 		if err != nil {
 			return nil, err
 		}
@@ -436,9 +446,6 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, err
 		length, err := buf.readUB1At(offset + osonUB1Size)
 		if err != nil {
 			return nil, err
-		}
-		if length > osonIDMaxPayloadSize {
-			return nil, common.NewOracleError(oracleErrors.OsonBufferError, nil)
 		}
 		raw, err := buf.readSliceAt(offset+osonUB2Size, int(length))
 		if err != nil {

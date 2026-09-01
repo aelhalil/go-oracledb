@@ -48,25 +48,6 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// hashOrderedField pairs a dictionary field name with its compact hash for ordering assertions.
-type hashOrderedField struct {
-	name string
-	hash int
-}
-
-// equalHashOrderedFieldNames reports whether names match the expected compact-hash ordering.
-func equalHashOrderedFieldNames(names []string, expected []hashOrderedField) bool {
-	if len(names) != len(expected) {
-		return false
-	}
-	for i := range names {
-		if names[i] != expected[i].name {
-			return false
-		}
-	}
-	return true
-}
-
 // TestOsonHeader_SampleOson verifies parsing metadata and primary dictionary entries from the basic object fixture.
 func TestOsonHeader_SampleOson(t *testing.T) {
 	// Basic v1 object with a primary dictionary.
@@ -82,36 +63,24 @@ func TestOsonHeader_SampleOson(t *testing.T) {
 	if header.isScalar() {
 		t.Fatalf("isScalar = true, want false")
 	}
-	if got, want := int(header.uniqueFields()), 3; got != want {
+	if got, want := int(len(header.fieldDictionary.fieldNames)), 3; got != want {
 		t.Fatalf("uniqueFields = %d, want %d", got, want)
 	}
-	if got, want := header.treeSegmentSize(), drvCommon.UB4(0x001C); got != want {
+	if got, want := header.treeSegmentByteLength, drvCommon.UB4(0x001C); got != want {
 		t.Fatalf("treeSegmentSize = %d, want %d", got, want)
 	}
 	if got, want := header.treeSegmentOffset(), 39; got != want {
 		t.Fatalf("treeSegmentOffset = %d, want %d", got, want)
 	}
 
-	expectedNames := []string{"role", "name", "active"}
-	expectedFields := make([]hashOrderedField, len(expectedNames))
-	for i, name := range expectedNames {
-		hash, _ := ohash(name)
-		expectedFields[i].name = name
-		expectedFields[i].hash = int(hash)
-	}
-	slices.SortFunc(expectedFields, func(a, b hashOrderedField) int {
-		return a.hash - b.hash
-	})
-	if got := header.fieldNames(); !equalHashOrderedFieldNames(got, expectedFields) {
-		t.Fatalf("fieldNames = %v, want %v", got, expectedNames)
+	wantNames := []string{"role", "active", "name"}
+	if got := header.fieldDictionary.fieldNames; !slices.Equal(got, wantNames) {
+		t.Fatalf("fieldNames = %v, want %v", got, wantNames)
 	}
 
-	for i, expected := range expectedFields {
-		if got, ok := header.fieldName(i); !ok || got != expected.name {
-			t.Fatalf("fieldName(%d) = (%q, %v), want (%q, true)", i, got, ok, expected.name)
-		}
-		if fid := header.fieldID(expected.name); fid != i+1 {
-			t.Fatalf("fieldID(%q) = %d, want %d", expected.name, fid, i+1)
+	for i, wantName := range wantNames {
+		if got, ok := header.fieldName(i); !ok || got != wantName {
+			t.Fatalf("fieldName(%d) = (%q, %v), want (%q, true)", i, got, ok, wantName)
 		}
 	}
 }
@@ -132,67 +101,6 @@ func TestIsOson(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_GetFieldId_UsesPrimaryHashWidthForUB1 verifies primary dictionary lookup with a one-byte hash.
-func TestOsonHeader_GetFieldId_UsesPrimaryHashWidthForUB1(t *testing.T) {
-	// Primary lookups use compact UB1 hashes.
-	full, _ := osonHash("alpha")
-	header := &osonHeader{
-		primaryFieldsCount: 1,
-		fieldDictionary: dictionary{
-			hashIDs:    []uint32{compactPrimaryHash(full, 1)},
-			fieldNames: []string{"alpha"},
-		},
-	}
-
-	if got := header.fieldID("alpha"); got != 1 {
-		t.Fatalf("fieldID(alpha) = %d, want 1", got)
-	}
-}
-
-// TestOsonHeader_GetFieldId_UsesUTF8BytesForPrimaryKey verifies primary-key tier selection uses UTF-8 byte length.
-func TestOsonHeader_GetFieldId_UsesUTF8BytesForPrimaryKey(t *testing.T) {
-	// Tier selection uses UTF-8 byte length.
-	key := "cafeé"
-	h, n := ohash(key)
-	if want := len([]byte(key)); n != want {
-		t.Fatalf("ohash(%q) length = %d, want UTF-8 length %d", key, n, want)
-	}
-
-	header := &osonHeader{
-		primaryFieldsCount: 1,
-		fieldDictionary: dictionary{
-			hashIDs:    []uint32{h},
-			fieldNames: []string{key},
-		},
-	}
-
-	if got := header.fieldID(key); got != 1 {
-		t.Fatalf("fieldID(%q) = %d, want 1", key, got)
-	}
-}
-
-// TestOsonHeader_GetFieldId_UsesUTF8LengthForSecondaryKey verifies a 256-byte UTF-8 key is looked up in the secondary dictionary.
-func TestOsonHeader_GetFieldId_UsesUTF8LengthForSecondaryKey(t *testing.T) {
-	// 256 UTF-8 bytes moves the key to the long-key tier.
-	key := strings.Repeat("é", 128) // 256 UTF-8 bytes, so this must use the secondary dictionary.
-	h, n := ohash(key)
-	if want := len([]byte(key)); n != want {
-		t.Fatalf("ohash(long UTF-8 key) length = %d, want %d", n, want)
-	}
-
-	header := &osonHeader{
-		primaryFieldsCount: 0,
-		fieldDictionary: dictionary{
-			hashIDs:    []uint32{h},
-			fieldNames: []string{key},
-		},
-	}
-
-	if got := header.fieldID(key); got != 1 {
-		t.Fatalf("fieldID(long UTF-8 key) = %d, want 1", got)
-	}
-}
-
 // TestOsonHeader_ScalarDocumentUsesPostHeaderTreeOffset verifies a scalar tree begins immediately after its fixed header.
 func TestOsonHeader_ScalarDocumentUsesPostHeaderTreeOffset(t *testing.T) {
 	// Scalars start the tree right after the fixed header.
@@ -208,11 +116,157 @@ func TestOsonHeader_ScalarDocumentUsesPostHeaderTreeOffset(t *testing.T) {
 	if got, want := header.treeSegmentOffset(), 8; got != want {
 		t.Fatalf("treeSegmentOffset = %d, want %d", got, want)
 	}
-	if got, want := header.treeSegmentSize(), drvCommon.UB4(1); got != want {
+	if got, want := header.treeSegmentByteLength, drvCommon.UB4(1); got != want {
 		t.Fatalf("treeSegmentSize = %d, want %d", got, want)
 	}
 	if got, want := buf.position(), header.treeSegmentOffset(); got != want {
 		t.Fatalf("buffer position = %d, want tree segment offset %d", got, want)
+	}
+}
+
+// TestOsonHeader_UpdatedTinyScalarFixture verifies the V2 update metadata of
+// the database-produced tiny scalar replacement fixture.
+func TestOsonHeader_UpdatedTinyScalarFixture(t *testing.T) {
+	buffer := newOsonBuffer(sampleUpdatedTinyScalar.oson)
+	header, err := newOsonHeader(buffer)
+	if err != nil {
+		t.Fatalf("newOsonHeader() error = %v", err)
+	}
+	if got, want := header.version(), drvCommon.UB1(2); got != want {
+		t.Fatalf("version = %d, want %d", got, want)
+	}
+	if got, want := header.updateHeaderFlags, drvCommon.UB2(osonFlagUpdateOverflowSegmentUB2Mask); got != want {
+		t.Fatalf("updateHeaderFlags = 0x%04x, want 0x%04x", got, want)
+	}
+	if got, want := header.extendedTreeSegmentStartOffset, 51; got != want {
+		t.Fatalf("extendedTreeSegmentStartOffset = %d, want %d", got, want)
+	}
+	if got := len(header.forwardingAddresses); got != 0 {
+		t.Fatalf("forwarding address count = %d, want 0", got)
+	}
+}
+
+// TestOsonHeader_RejectsMalformedUpdateMetadata verifies update-header
+// reserved fields and segment boundaries are validated.
+func TestOsonHeader_RejectsMalformedUpdateMetadata(t *testing.T) {
+	validHeader, err := newOsonHeader(newOsonBuffer(sampleUpdatedTinyScalar.oson))
+	if err != nil {
+		t.Fatalf("newOsonHeader() error = %v", err)
+	}
+	updateOffset := validHeader.treeSegmentOffset() + int(validHeader.treeSegmentByteLength)
+
+	tests := []struct {
+		name       string
+		appendByte bool
+		mutate     func(drvCommon.B1Array)
+	}{
+		{
+			name: "reserved update flag",
+			mutate: func(doc drvCommon.B1Array) {
+				doc[updateOffset] = 0x02
+			},
+		},
+		{
+			name: "reserved update bytes",
+			mutate: func(doc drvCommon.B1Array) {
+				doc[updateOffset+4] = 0x01
+			},
+		},
+		{
+			name: "mapping count exceeds map capacity",
+			mutate: func(doc drvCommon.B1Array) {
+				doc[updateOffset+3] = 0x01
+				binary.BigEndian.PutUint32(doc[updateOffset+8:], 0)
+			},
+		},
+		{
+			name:       "trailing byte after extended tree",
+			appendByte: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			doc := sampleUpdatedTinyScalar.cloneOSON()
+			if test.appendByte {
+				doc = append(doc, 0x00)
+			}
+			if test.mutate != nil {
+				test.mutate(doc)
+			}
+			_, err := newOsonHeader(newOsonBuffer(doc))
+			if err == nil {
+				t.Fatal("newOsonHeader() error = nil, want failure")
+			}
+			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+		})
+	}
+}
+
+// TestOsonHeader_RejectsV1UpdateMetadata verifies partial-update segments are
+// accepted only in their V2/V4 document forms.
+func TestOsonHeader_RejectsV1UpdateMetadata(t *testing.T) {
+	doc := append(sampleSimpleObject.cloneOSON(), make(drvCommon.B1Array, 16)...)
+	_, err := newOsonHeader(newOsonBuffer(doc))
+	if err == nil {
+		t.Fatal("newOsonHeader() error = nil, want V1 update-metadata failure")
+	}
+	assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+}
+
+// TestOsonHeader_RejectsOutOfRangeUpdateMappings verifies update-map entries
+// are validated even when no decoded node has reached the mapping yet.
+func TestOsonHeader_RejectsOutOfRangeUpdateMappings(t *testing.T) {
+	tests := []struct {
+		name   string
+		sample osonSample
+		mutate func(drvCommon.B1Array, int)
+	}{
+		{
+			name:   "UB2 source outside primary tree",
+			sample: sampleUpdatedOverflow,
+			mutate: func(doc drvCommon.B1Array, mapOffset int) {
+				binary.BigEndian.PutUint16(doc[mapOffset:], 0xffff)
+			},
+		},
+		{
+			name:   "UB2 target outside extended tree",
+			sample: sampleUpdatedOverflow,
+			mutate: func(doc drvCommon.B1Array, mapOffset int) {
+				binary.BigEndian.PutUint16(doc[mapOffset+2:], 0xffff)
+			},
+		},
+		{
+			name:   "UB4 source outside primary tree",
+			sample: sampleUpdatedOverflowUB4,
+			mutate: func(doc drvCommon.B1Array, mapOffset int) {
+				binary.BigEndian.PutUint32(doc[mapOffset:], 0xffffffff)
+			},
+		},
+		{
+			name:   "UB4 target outside extended tree",
+			sample: sampleUpdatedOverflowUB4,
+			mutate: func(doc drvCommon.B1Array, mapOffset int) {
+				binary.BigEndian.PutUint32(doc[mapOffset+4:], 0xffffffff)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			doc := test.sample.cloneOSON()
+			header, err := newOsonHeader(newOsonBuffer(doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapOffset := header.treeSegmentOffset() + int(header.treeSegmentByteLength) + 16
+			test.mutate(doc, mapOffset)
+			if _, err := newOsonHeader(newOsonBuffer(doc)); err == nil {
+				t.Fatal("newOsonHeader() error = nil, want invalid-map failure")
+			} else {
+				assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+			}
+		})
 	}
 }
 
@@ -231,30 +285,28 @@ func TestOsonHeader_NestedObjectArrayFixture(t *testing.T) {
 	if header.isScalar() {
 		t.Fatal("isScalar = true, want false")
 	}
-	if got, want := int(header.uniqueFields()), 7; got != want {
+	if got, want := int(len(header.fieldDictionary.fieldNames)), 7; got != want {
 		t.Fatalf("uniqueFields = %d, want %d", got, want)
 	}
-	if got, want := header.treeSegmentSize(), drvCommon.UB4(0x003A); got != want {
+	if got, want := header.treeSegmentByteLength, drvCommon.UB4(0x003A); got != want {
 		t.Fatalf("treeSegmentSize = %d, want %d", got, want)
 	}
 	if got, want := header.treeSegmentOffset(), 60; got != want {
 		t.Fatalf("treeSegmentOffset = %d, want %d", got, want)
 	}
-	if got, want := header.tinyNodeCount(), drvCommon.UB2(1); got != want {
+	if got, want := header.tinyNodeStatCount, drvCommon.UB2(1); got != want {
 		t.Fatalf("tinyNodeCount = %d, want %d", got, want)
 	}
 
 	want := []string{"x", "items", "ok", "id", "name", "user", "y"}
-	if got := header.fieldNames(); !slices.Equal(got, want) {
+	if got := header.fieldDictionary.fieldNames; !slices.Equal(got, want) {
 		t.Fatalf("fieldNames = %v, want %v", got, want)
 	}
 	for i, name := range want {
 		if got, ok := header.fieldName(i); !ok || got != name {
 			t.Fatalf("fieldName(%d) = (%q, %v), want (%q, true)", i, got, ok, name)
 		}
-		if fid := header.fieldID(name); fid != i+1 {
-			t.Fatalf("fieldID(%q) = %d, want %d", name, fid, i+1)
-		}
+
 	}
 	if got, want := buf.position(), header.treeSegmentOffset(); got != want {
 		t.Fatalf("buffer position = %d, want reset to tree segment offset %d", got, want)
@@ -278,10 +330,10 @@ func TestOsonHeader_SecondaryDictionaryFixture(t *testing.T) {
 	if header.isScalar() {
 		t.Fatal("isScalar = true, want false")
 	}
-	if got, want := int(header.uniqueFields()), 2; got != want {
+	if got, want := int(len(header.fieldDictionary.fieldNames)), 2; got != want {
 		t.Fatalf("uniqueFields2 = %d, want %d", got, want)
 	}
-	if got, want := header.treeSegmentSize(), drvCommon.UB4(0x000E); got != want {
+	if got, want := header.treeSegmentByteLength, drvCommon.UB4(0x000E); got != want {
 		t.Fatalf("treeSegmentSize = %d, want %d", got, want)
 	}
 	if got, want := header.treeSegmentOffset(), 294; got != want {
@@ -289,16 +341,14 @@ func TestOsonHeader_SecondaryDictionaryFixture(t *testing.T) {
 	}
 
 	want := []string{"short", longKey}
-	if got := header.fieldNames(); !slices.Equal(got, want) {
+	if got := header.fieldDictionary.fieldNames; !slices.Equal(got, want) {
 		t.Fatalf("fieldNames length/order mismatch: got %v entries, want %v", len(got), len(want))
 	}
 	for i, name := range want {
 		if got, ok := header.fieldName(i); !ok || got != name {
 			t.Fatalf("fieldName(%d) = (%q, %v), want (%q, true)", i, got, ok, name)
 		}
-		if fid := header.fieldID(name); fid != i+1 {
-			t.Fatalf("fieldID(%q) = %d, want %d", name, fid, i+1)
-		}
+
 	}
 	if got, want := buf.position(), header.treeSegmentOffset(); got != want {
 		t.Fatalf("buffer position = %d, want reset to tree segment offset %d", got, want)
@@ -393,6 +443,58 @@ func TestOsonHeader_RejectsMalformedFixedHeader(t *testing.T) {
 	}
 }
 
+// TestOsonHeader_RejectsReservedFlags verifies persistent reserved flag bits
+// cannot silently change the interpreted wire layout.
+func TestOsonHeader_RejectsReservedFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		doc  drvCommon.B1Array
+	}{
+		{
+			name: "root flag one",
+			doc: func() drvCommon.B1Array {
+				doc := sampleScalarTrue.cloneOSON()
+				doc[4] |= 0x02
+				return doc
+			}(),
+		},
+		{
+			name: "root flag two",
+			doc: func() drvCommon.B1Array {
+				doc := sampleScalarTrue.cloneOSON()
+				doc[5] |= 0x80
+				return doc
+			}(),
+		},
+		{
+			name: "secondary flag three",
+			doc: func() drvCommon.B1Array {
+				doc := sampleSecondaryDictionary.cloneOSON()
+				doc[9] |= 0x02
+				return doc
+			}(),
+		},
+		{
+			name: "secondary flag four",
+			doc: func() drvCommon.B1Array {
+				doc := sampleSecondaryDictionary.cloneOSON()
+				doc[10] = 0x01
+				return doc
+			}(),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := newOsonHeader(newOsonBuffer(test.doc))
+			if err == nil {
+				t.Fatal("newOsonHeader() error = nil, want reserved-flag failure")
+			}
+			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+		})
+	}
+}
+
 // TestOsonHeader_ScalarTreeSizeUB4 verifies scalar documents honor a UB4-encoded tree segment size.
 func TestOsonHeader_ScalarTreeSizeUB4(t *testing.T) {
 	doc := buildScalarOsonForTest(drvCommon.B1Array{osonOpFalse}, osonFlagTreeSegmentSizeUB4Mask, nil)
@@ -403,7 +505,7 @@ func TestOsonHeader_ScalarTreeSizeUB4(t *testing.T) {
 	if got, want := header.treeSegmentOffset(), 10; got != want {
 		t.Fatalf("treeSegmentOffset = %d, want %d", got, want)
 	}
-	if got, want := header.treeSegmentSize(), drvCommon.UB4(1); got != want {
+	if got, want := header.treeSegmentByteLength, drvCommon.UB4(1); got != want {
 		t.Fatalf("treeSegmentSize = %d, want %d", got, want)
 	}
 }
@@ -433,10 +535,10 @@ func TestOsonHeader_ReadHeaderWidthVariants(t *testing.T) {
 	if layout.secondaryCount != 1 || layout.secondaryHeapSize != 0x0102 {
 		t.Fatalf("secondary layout = (%d, %d), want (1, 258)", layout.secondaryCount, layout.secondaryHeapSize)
 	}
-	if got, want := header.treeSegmentSize(), drvCommon.UB4(0x40); got != want {
+	if got, want := header.treeSegmentByteLength, drvCommon.UB4(0x40); got != want {
 		t.Fatalf("treeSegmentSize = %d, want %d", got, want)
 	}
-	if got, want := header.tinyNodeCount(), drvCommon.UB2(2); got != want {
+	if got, want := header.tinyNodeStatCount, drvCommon.UB2(2); got != want {
 		t.Fatalf("tinyNodeCount = %d, want %d", got, want)
 	}
 
@@ -463,7 +565,7 @@ func TestOsonHeader_ReadHeaderWidthVariants(t *testing.T) {
 func TestOsonHeader_MetadataHelpersReflectFlagsAndBounds(t *testing.T) {
 	header := &osonHeader{
 		flags: osonFlagInlineLeafMask |
-			osonFlagObjectFieldsUnsortedMask |
+			osonFlagObjectFIDsUnsortedMask |
 			osonFlagDistinctFieldCountUB2Mask,
 		treeSegmentStartOffset:         10,
 		extendedTreeSegmentStartOffset: 20,
@@ -475,6 +577,10 @@ func TestOsonHeader_MetadataHelpersReflectFlagsAndBounds(t *testing.T) {
 		t.Fatal("fieldsSorted() = true, want false for unsorted flag")
 	}
 	if got, want := header.numFieldIDBytes(), osonUB2Size; got != want {
+		t.Fatalf("numFieldIDBytes() = %d, want %d", got, want)
+	}
+	header.flags = osonFlagDistinctFieldCountUB4Mask
+	if got, want := header.numFieldIDBytes(), osonUB4Size; got != want {
 		t.Fatalf("numFieldIDBytes() = %d, want %d", got, want)
 	}
 	if got, want := header.segmentOffsetForNode(25), 20; got != want {
@@ -490,6 +596,111 @@ func TestOsonHeader_MetadataHelpersReflectFlagsAndBounds(t *testing.T) {
 	if got := compactPrimaryHash(0x01020304, osonUB4Size); got != 0x01020304 {
 		t.Fatalf("compactPrimaryHash(UB4) = %#x, want original hash", got)
 	}
+}
+
+// TestOsonHeader_ForwardingHelpers verifies extended-tree offset resolution
+// without constructing an OSON update document.
+func TestOsonHeader_ForwardingHelpers(t *testing.T) {
+	header := &osonHeader{
+		treeSegmentStartOffset:         20,
+		extendedTreeSegmentStartOffset: 100,
+		extendedTreeSegmentByteLength:  100,
+		forwardingAddresses:            map[int]int{10: 30},
+	}
+
+	if got, err := header.resolveForwardedOffset(30); err != nil || got != 130 {
+		t.Fatalf("resolveForwardedOffset(30) = (%d, %v), want (130, nil)", got, err)
+	}
+	if got, err := header.resolveOverflowOffset(30); err != nil || got != 130 {
+		t.Fatalf("resolveOverflowOffset(30) = (%d, %v), want (130, nil)", got, err)
+	}
+	if _, err := header.resolveForwardedOffset(100); err == nil {
+		t.Fatal("resolveForwardedOffset(100) error = nil, want bounds failure")
+	}
+
+	for _, test := range []struct {
+		name string
+		call func(*osonHeader) error
+	}{
+		{
+			name: "forwarded offset without extended tree",
+			call: func(header *osonHeader) error {
+				_, err := header.resolveForwardedOffset(0)
+				return err
+			},
+		},
+		{
+			name: "overflow offset without mapping",
+			call: func(header *osonHeader) error {
+				_, err := header.resolveOverflowOffset(20)
+				return err
+			},
+		},
+		{
+			name: "overflow offset absent from mapping",
+			call: func(header *osonHeader) error {
+				_, err := header.resolveOverflowOffset(21)
+				return err
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := &osonHeader{}
+			if test.name == "overflow offset absent from mapping" {
+				candidate = header
+			}
+			err := test.call(candidate)
+			if err == nil {
+				t.Fatal("offset resolution error = nil, want failure")
+			}
+			assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
+		})
+	}
+}
+
+// TestOsonHeader_AddForwardingAddressValidatesMappings verifies update-map
+// entries stay within their respective tree segments and have unique sources.
+func TestOsonHeader_AddForwardingAddressValidatesMappings(t *testing.T) {
+	header := &osonHeader{
+		treeSegmentByteLength: 10,
+		forwardingAddresses:   make(map[int]int),
+	}
+	if err := header.addForwardingAddress(3, 7, 8); err != nil {
+		t.Fatalf("addForwardingAddress(valid) error = %v", err)
+	}
+	if got := header.forwardingAddresses[3]; got != 7 {
+		t.Fatalf("forwarding address = %d, want 7", got)
+	}
+
+	for _, test := range []struct {
+		name string
+		from int
+		to   int
+	}{
+		{name: "source before primary tree", from: -1, to: 0},
+		{name: "source after primary tree", from: 10, to: 0},
+		{name: "target before extended tree", from: 4, to: -1},
+		{name: "target after extended tree", from: 4, to: 8},
+		{name: "duplicate source", from: 3, to: 6},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := header.addForwardingAddress(test.from, test.to, 8)
+			if err == nil {
+				t.Fatal("addForwardingAddress() error = nil, want validation failure")
+			}
+			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+		})
+	}
+}
+
+// TestOsonHeader_RejectsNilBuffer verifies header initialization reports a
+// parser error instead of dereferencing a nil buffer.
+func TestOsonHeader_RejectsNilBuffer(t *testing.T) {
+	err := (&osonHeader{}).initialize(nil)
+	if err == nil {
+		t.Fatal("initialize(nil) error = nil, want failure")
+	}
+	assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
 }
 
 // TestOsonHeader_RejectsCorruptDictionaryHeaps verifies malformed primary and secondary dictionary heaps are rejected.
@@ -531,6 +742,122 @@ func TestOsonHeader_RejectsCorruptDictionaryHeaps(t *testing.T) {
 			_, err := newOsonHeader(newOsonBuffer(corrupt))
 			if err == nil {
 				t.Fatal("newOsonHeader() error = nil, want dictionary failure")
+			}
+			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+		})
+	}
+}
+
+// TestOsonHeader_DictionaryReadersHandleBothOffsetWidths verifies the compact
+// and wide offset encodings used by the dictionary parser components.
+func TestOsonHeader_DictionaryReadersHandleBothOffsetWidths(t *testing.T) {
+	tests := []struct {
+		name   string
+		header *osonHeader
+		data   drvCommon.B1Array
+		read   func(*osonHeader, *osonBuffer) ([]int, error)
+		want   []int
+	}{
+		{
+			name:   "primary ub2 offsets",
+			header: &osonHeader{},
+			data:   drvCommon.B1Array{0x00, 0x03, 0x00, 0x07},
+			read: func(header *osonHeader, buffer *osonBuffer) ([]int, error) {
+				return header.readPrimaryOffsets(buffer, 2)
+			},
+			want: []int{3, 7},
+		},
+		{
+			name:   "primary ub4 offsets",
+			header: &osonHeader{flags: osonFlagFieldHeapSizeUB4Mask},
+			data:   drvCommon.B1Array{0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x01, 0x00},
+			read: func(header *osonHeader, buffer *osonBuffer) ([]int, error) {
+				return header.readPrimaryOffsets(buffer, 2)
+			},
+			want: []int{3, 256},
+		},
+		{
+			name:   "secondary ub2 offsets",
+			header: &osonHeader{secondaryFlags: osonFlagSecondaryFieldOffsetsUB2Mask},
+			data:   drvCommon.B1Array{0x00, 0x03, 0x00, 0x07},
+			read: func(header *osonHeader, buffer *osonBuffer) ([]int, error) {
+				return header.readSecondaryOffsets(buffer, 2)
+			},
+			want: []int{3, 7},
+		},
+		{
+			name:   "secondary ub4 offsets",
+			header: &osonHeader{},
+			data:   drvCommon.B1Array{0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x01, 0x00},
+			read: func(header *osonHeader, buffer *osonBuffer) ([]int, error) {
+				return header.readSecondaryOffsets(buffer, 2)
+			},
+			want: []int{3, 256},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := test.read(test.header, newOsonBuffer(test.data))
+			if err != nil {
+				t.Fatalf("dictionary read error = %v", err)
+			}
+			if !slices.Equal(got, test.want) {
+				t.Fatalf("offsets = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+// TestOsonHeader_DictionaryReadersRejectTruncation verifies dictionary reader
+// failures return parser errors rather than indexing past the input buffer.
+func TestOsonHeader_DictionaryReadersRejectTruncation(t *testing.T) {
+	tests := []struct {
+		name string
+		read func() error
+	}{
+		{
+			name: "primary hashes",
+			read: func() error {
+				_, err := (&osonHeader{}).readPrimaryHashes(newOsonBuffer(nil), 1)
+				return err
+			},
+		},
+		{
+			name: "primary ub4 offsets",
+			read: func() error {
+				_, err := (&osonHeader{flags: osonFlagFieldHeapSizeUB4Mask}).readPrimaryOffsets(newOsonBuffer(drvCommon.B1Array{0, 0, 0}), 1)
+				return err
+			},
+		},
+		{
+			name: "secondary hashes",
+			read: func() error {
+				_, err := (&osonHeader{}).readSecondaryHashes(newOsonBuffer(drvCommon.B1Array{0}), 1)
+				return err
+			},
+		},
+		{
+			name: "secondary ub2 offsets",
+			read: func() error {
+				_, err := (&osonHeader{secondaryFlags: osonFlagSecondaryFieldOffsetsUB2Mask}).readSecondaryOffsets(newOsonBuffer(drvCommon.B1Array{0}), 1)
+				return err
+			},
+		},
+		{
+			name: "secondary ub4 offsets",
+			read: func() error {
+				_, err := (&osonHeader{}).readSecondaryOffsets(newOsonBuffer(drvCommon.B1Array{0, 0, 0}), 1)
+				return err
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.read()
+			if err == nil {
+				t.Fatal("dictionary read error = nil, want failure")
 			}
 			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
 		})

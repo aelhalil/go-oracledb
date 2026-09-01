@@ -49,9 +49,7 @@ import (
 	ojson "github.com/oracle/go-oracledb/v26/oracle/json"
 )
 
-// TestDriver_OSON_ScalarDocuments inserts scalar-root JSON documents using
-// JSONValue. JSONValue creates the client-side OSON payload for the bind, and
-// the selected JSON column is scanned back through oracle/json.JSON.
+// TestDriver_OSON_ScalarDocuments inserts scalar-root JSON documents using JSONValue.
 func TestDriver_OSON_ScalarDocuments(t *testing.T) {
 	tests := []osonFunctionalCase{
 		{name: "null", input: nil, want: nil},
@@ -67,9 +65,9 @@ func TestDriver_OSON_ScalarDocuments(t *testing.T) {
 	runOSONFunctionalCases(t, "t_oson_scalar", tests)
 }
 
-// TestDriver_OSON_RichObject inserts a representative object with nested
+// TestDriver_OSON_NestedObject inserts a representative object with nested
 // maps, arrays, nulls, booleans, Unicode strings, and numbers.
-func TestDriver_OSON_RichObject(t *testing.T) {
+func TestDriver_OSON_NestedObject(t *testing.T) {
 	value := map[string]any{
 		"id":      ojson.Number("42"),
 		"name":    "Mona",
@@ -88,13 +86,13 @@ func TestDriver_OSON_RichObject(t *testing.T) {
 	}
 
 	runOSONFunctionalCases(t, "t_oson_object", []osonFunctionalCase{
-		{name: "rich-object", input: value, want: value},
+		{name: "object", input: value, want: value},
 	})
 }
 
-// TestDriver_OSON_RichNestedArray inserts an array-root document with
+// TestDriver_OSON_NestedArray inserts an array-root document with
 // traversal after the database stores and returns the JSON document.
-func TestDriver_OSON_RichNestedArray(t *testing.T) {
+func TestDriver_OSON_NestedArray(t *testing.T) {
 	value := []any{
 		nil,
 		true,
@@ -115,7 +113,7 @@ func TestDriver_OSON_RichNestedArray(t *testing.T) {
 	}
 
 	runOSONFunctionalCases(t, "t_oson_array", []osonFunctionalCase{
-		{name: "rich-nested-array", input: value, want: value},
+		{name: "array", input: value, want: value},
 	})
 }
 
@@ -140,7 +138,7 @@ func TestDriver_OSON_LargeDocument(t *testing.T) {
 	}
 
 	runOSONFunctionalCases(t, "t_oson_large", []osonFunctionalCase{
-		{name: "large-document", input: value, want: value},
+		{name: "document", input: value, want: value},
 	})
 }
 
@@ -157,8 +155,220 @@ func TestDriver_OSON_LongUTF8DictionaryKey(t *testing.T) {
 	}
 
 	runOSONFunctionalCases(t, "t_oson_long_key", []osonFunctionalCase{
-		{name: "long-utf8-dictionary-key", input: value, want: value},
+		{name: "long-key", input: value, want: value},
 	})
+}
+
+// TestDriver_OSON_JSONWrappers verifies the oracle/json wrappers over
+// OSON values produced by the database after normal bind and fetch flows.
+func TestDriver_OSON_JSONWrappers(t *testing.T) {
+	table := createObjectName("t_oson_public_api")
+	db, ctx := setupOSONFunctionalTable(t, table)
+	insert := func(id int64, value any) {
+		t.Helper()
+		if _, err := db.ExecContext(ctx,
+			"INSERT INTO "+table+" (id, jdoc) VALUES (:id, :jdoc)",
+			sql.Named("id", id),
+			sql.Named("jdoc", value),
+		); err != nil {
+			t.Fatalf("insert %d failed: %v", id, err)
+		}
+	}
+	fetch := func(id int64) ojson.JSON {
+		t.Helper()
+		var value ojson.JSON
+		if err := db.QueryRowContext(ctx,
+			"SELECT jdoc FROM "+table+" WHERE id = :id",
+			sql.Named("id", id),
+		).Scan(&value); err != nil {
+			t.Fatalf("select %d failed: %v", id, err)
+		}
+		return value
+	}
+
+	wantObject := map[string]any{
+		"id":     ojson.Number("42"),
+		"name":   "Mona",
+		"active": true,
+		"items":  []any{"go", ojson.Number("2"), map[string]any{"enabled": true}},
+	}
+	insert(1, ojson.JSONValue{Data: wantObject})
+	objectJSON := fetch(1)
+	if kind, err := objectJSON.Kind(); err != nil || kind != ojson.JSONObjectKind {
+		t.Fatalf("object JSON.Kind() = (%v, %v), want (%v, nil)", kind, err, ojson.JSONObjectKind)
+	}
+	assertOSONDocument(t, objectJSON, wantObject)
+	if text := objectJSON.String(); text == "" {
+		t.Fatal("JSON.String() returned empty text")
+	}
+	if text, err := objectJSON.StringWithOption(ojson.JSONOptNumberAsString); err != nil || text == "" {
+		t.Fatalf("JSON.StringWithOption() = (%q, %v), want non-empty text and nil error", text, err)
+	}
+
+	object, err := objectJSON.GetJSONObject(ojson.JSONOptNumberAsString)
+	if err != nil {
+		t.Fatalf("GetJSONObject() failed: %v", err)
+	}
+	if got, want := object.Len(), len(wantObject); got != want {
+		t.Fatalf("JSONObject.Len() = %d, want %d", got, want)
+	}
+	if got := object.Keys(); len(got) != len(wantObject) {
+		t.Fatalf("JSONObject.Keys() = %v, want %d keys", got, len(wantObject))
+	}
+	if !object.Has("items") || object.Has("missing") {
+		t.Fatalf("JSONObject.Has() returned inconsistent membership")
+	}
+	if _, ok := object.Get("missing"); ok {
+		t.Fatal(`JSONObject.Get("missing") = true, want false`)
+	}
+	if got, err := object.GetValue(); err != nil || !reflect.DeepEqual(got, wantObject) {
+		t.Fatalf("JSONObject.GetValue() = (%#v, %v), want (%#v, nil)", got, err, wantObject)
+	}
+	if text := object.String(); text == "" {
+		t.Fatal("JSONObject.String() returned empty text")
+	}
+
+	itemsJSON, ok := object.Get("items")
+	if !ok {
+		t.Fatal(`JSONObject.Get("items") = false, want true`)
+	}
+	items, err := itemsJSON.GetJSONArray(ojson.JSONOptNumberAsString)
+	if err != nil {
+		t.Fatalf("items.GetJSONArray() failed: %v", err)
+	}
+	if got, want := items.Len(), 3; got != want {
+		t.Fatalf("nested JSONArray.Len() = %d, want %d", got, want)
+	}
+	itemJSON, err := items.Get(1)
+	if err != nil {
+		t.Fatalf("JSONArray.Get(1) failed: %v", err)
+	}
+	item, err := itemJSON.GetJSONScalar(ojson.JSONOptNumberAsString)
+	if err != nil {
+		t.Fatalf("GetJSONScalar() failed: %v", err)
+	}
+	if got, err := item.GetValue(); err != nil || got != ojson.Number("2") {
+		t.Fatalf("JSONScalar.GetValue() = (%#v, %v), want (%q, nil)", got, err, ojson.Number("2"))
+	}
+	if _, err := items.Get(-1); err == nil {
+		t.Fatal("JSONArray.Get(-1) error = nil, want out-of-range error")
+	}
+
+	wantArray := []any{true, "entry", ojson.Number("3.5")}
+	insert(2, ojson.JSONValue{Data: wantArray})
+	arrayJSON := fetch(2)
+	if kind, err := arrayJSON.Kind(); err != nil || kind != ojson.JSONArrayKind {
+		t.Fatalf("array JSON.Kind() = (%v, %v), want (%v, nil)", kind, err, ojson.JSONArrayKind)
+	}
+	array, err := arrayJSON.GetJSONArray(ojson.JSONOptNumberAsString)
+	if err != nil {
+		t.Fatalf("root GetJSONArray() failed: %v", err)
+	}
+	if got, err := array.GetValue(); err != nil || !reflect.DeepEqual(got, wantArray) {
+		t.Fatalf("JSONArray.GetValue() = (%#v, %v), want (%#v, nil)", got, err, wantArray)
+	}
+	if text := array.String(); text == "" {
+		t.Fatal("JSONArray.String() returned empty text")
+	}
+	if _, err := arrayJSON.GetJSONObject(ojson.JSONOptNumberAsString); err == nil {
+		t.Fatal("array GetJSONObject() error = nil, want access error")
+	}
+
+	insert(3, ojson.JSONValue{Data: true})
+	scalarJSON := fetch(3)
+	if kind, err := scalarJSON.Kind(); err != nil || kind != ojson.JSONScalarKind {
+		t.Fatalf("scalar JSON.Kind() = (%v, %v), want (%v, nil)", kind, err, ojson.JSONScalarKind)
+	}
+	scalar, err := scalarJSON.GetJSONScalar(ojson.JSONOptNumberAsString)
+	if err != nil {
+		t.Fatalf("root GetJSONScalar() failed: %v", err)
+	}
+	if got, err := scalar.GetValue(); err != nil || got != true {
+		t.Fatalf("root JSONScalar.GetValue() = (%#v, %v), want (true, nil)", got, err)
+	}
+	if _, err := scalarJSON.GetJSONArray(ojson.JSONOptNumberAsString); err == nil {
+		t.Fatal("scalar GetJSONArray() error = nil, want access error")
+	}
+
+	insert(4, ojson.JSONString{Data: `{"source":"json-string"}`})
+	assertOSONDocument(t, fetch(4), map[string]any{"source": "json-string"})
+
+	// Bind the fetched public JSON value again; this exercises JSON.Value().
+	insert(5, objectJSON)
+	assertOSONDocument(t, fetch(5), wantObject)
+}
+
+// TestDriver_OSON_JSONWrapperErrors verifies wrapper behavior
+// that cannot arise from a successful database scan, such as zero values and
+// invalid client input.
+func TestDriver_OSON_JSONWrapperErrors(t *testing.T) {
+	assertError := func(operation string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatalf("%s error = nil, want JSON API error", operation)
+		}
+	}
+
+	var value ojson.JSON
+	_, err := value.Value()
+	assertError("JSON.Value", err)
+	_, err = value.Kind()
+	assertError("JSON.Kind", err)
+	_, err = value.GetJSONObject(ojson.JSONOptDefault)
+	assertError("JSON.GetJSONObject", err)
+	_, err = value.GetJSONArray(ojson.JSONOptDefault)
+	assertError("JSON.GetJSONArray", err)
+	_, err = value.GetJSONScalar(ojson.JSONOptDefault)
+	assertError("JSON.GetJSONScalar", err)
+	_, err = value.GetValue(ojson.JSONOptDefault)
+	assertError("JSON.GetValue", err)
+	if got := value.String(); got != "" {
+		t.Fatalf("zero JSON.String() = %q, want empty string", got)
+	}
+	_, err = value.StringWithOption(ojson.JSONOptDefault)
+	assertError("JSON.StringWithOption", err)
+
+	var nilValue *ojson.JSON
+	assertError("nil JSON.Scan", nilValue.Scan([]byte{0xFF, 0x4A, 0x5A, 0x01}))
+	assertError("JSON.Scan text", value.Scan([]byte(`{"not":"oson"}`)))
+	assertError("JSON.Scan unsupported source", value.Scan("not bytes"))
+	_, err = (ojson.JSONValue{Data: struct{}{}}).Value()
+	assertError("JSONValue.Value unsupported input", err)
+
+	var object ojson.JSONObject
+	if got := object.Len(); got != -1 {
+		t.Fatalf("zero JSONObject.Len() = %d, want -1", got)
+	}
+	if got := object.Keys(); got != nil {
+		t.Fatalf("zero JSONObject.Keys() = %v, want nil", got)
+	}
+	if object.Has("missing") {
+		t.Fatal("zero JSONObject.Has() = true, want false")
+	}
+	if _, ok := object.Get("missing"); ok {
+		t.Fatal("zero JSONObject.Get() = true, want false")
+	}
+	_, err = object.GetValue()
+	assertError("JSONObject.GetValue", err)
+	if got := object.String(); got != "" {
+		t.Fatalf("zero JSONObject.String() = %q, want empty string", got)
+	}
+
+	var array ojson.JSONArray
+	if got := array.Len(); got != -1 {
+		t.Fatalf("zero JSONArray.Len() = %d, want -1", got)
+	}
+	_, err = array.GetValue()
+	assertError("JSONArray.GetValue", err)
+	_, err = array.Get(0)
+	assertError("JSONArray.Get", err)
+	if got := array.String(); got != "" {
+		t.Fatalf("zero JSONArray.String() = %q, want empty string", got)
+	}
+
+	var scalar ojson.JSONScalar
+	_, err = scalar.GetValue()
+	assertError("JSONScalar.GetValue", err)
 }
 
 // osonFunctionalCase defines an OSON document test case.
