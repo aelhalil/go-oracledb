@@ -55,7 +55,7 @@ func TestDriver_Table_Insert(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 23 {
+	if TestingConfig.DatabaseVersion.Major < 23 {
 		t.Skip("Inserting multiple rows with values is not supported with 19c")
 	}
 

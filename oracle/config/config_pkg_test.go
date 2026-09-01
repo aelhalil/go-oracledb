@@ -43,6 +43,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -100,11 +101,46 @@ func TestCategoryExecutor(t *testing.T) {
 	}
 }
 
+type Version struct {
+	Major int
+	Minor int
+	Micro int
+}
+
+func (v *Version) UnmarshalJSON(data []byte) error {
+	var dotted string
+	if err := json.Unmarshal(data, &dotted); err != nil {
+		return err
+	}
+
+	parts := strings.Split(dotted, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("version must contain three dot-separated fields, got %q", dotted)
+	}
+
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return fmt.Errorf("invalid major version: %w", err)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return fmt.Errorf("invalid minor version: %w", err)
+	}
+	micro, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return fmt.Errorf("invalid patch version: %w", err)
+	}
+	v.Major = major
+	v.Minor = minor
+	v.Micro = micro
+	return nil
+}
+
 // TestConfig structure that represents a testing configuration
 // A configuration contains any information neede to connect to a database
 type TestConfig struct {
-	ConfigName      string `json:"config_name"`
-	DatabaseVersion int    `json:"database_version"`
+	ConfigName      string  `json:"config_name"`
+	DatabaseVersion Version `json:"database_version"`
 	Enabled         bool
 
 	Driver struct {

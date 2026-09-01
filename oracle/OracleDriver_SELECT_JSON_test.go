@@ -63,7 +63,7 @@ func TestDriver_Table_Select_JSON(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 21 {
+	if TestingConfig.DatabaseVersion.Major < 21 {
 		t.Skip("JSON Type is not supported for DB < 21")
 	}
 	db, err := openTestDBWithConfig(TestingConfig)
@@ -172,7 +172,7 @@ func TestDriver_Table_Select_NullJSON(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 21 {
+	if TestingConfig.DatabaseVersion.Major < 21 {
 		t.Skip("Boolean Type is not supported for DB < 23")
 	}
 	db, err := openTestDBWithConfig(TestingConfig)
@@ -228,7 +228,7 @@ func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 21 {
+	if TestingConfig.DatabaseVersion.Major < 21 {
 		t.Skip("JSON Type is not supported for DB < 21")
 	}
 

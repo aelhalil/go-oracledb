@@ -43,6 +43,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -120,16 +121,16 @@ var testCases = []struct {
 	{"TestTimeoutConnectTimeoutPrecedence2", "functional/cyclops", false, TestTimeoutConnectTimeoutPrecedence2},
 	{"TestTimeoutConnectTimeoutPrecedence3", "functional/cyclops", false, TestTimeoutConnectTimeoutPrecedence3},
 	{"TestTimeoutConnectTimeoutPrecedence4", "functional", false, TestTimeoutConnectTimeoutPrecedence4},
-	{"TestDriver_Functional_SelectDual", "sanity", false, TestDriver_Functional_SelectDual},
-	{"TestDriver_SimpleConnection", "sanity", false, TestDriver_SimpleConnection},
+	{"TestDriver_Functional_SelectDual", "sanity,functional", false, TestDriver_Functional_SelectDual},
+	{"TestDriver_SimpleConnection", "sanity,functional", false, TestDriver_SimpleConnection},
 	{"TestDriver_Authentication_TTIWRN", "functional", false, TestDriver_Authentication_TTIWRN},
 	{"TestDriver_Authentication_OCIToken", "functional", false, TestDriver_Authentication_OCIToken},
 	{"TestDriver_Authentication_OAuth", "functional", false, TestDriver_Authentication_OAuth},
-	{"TestDriver_TCPS_Pipeline_SelectDual", "sanity", false, TestDriver_TCPS_Pipeline_SelectDual},
-	{"TestDriver_TCPS_Pipeline_InvalidCertDn", "sanity", false, TestDriver_TCPS_Pipeline_InvalidCertDn},
-	{"TestDriver_TCPS_Pipeline_InvalidWalletLocation", "sanity", false, TestDriver_TCPS_Pipeline_InvalidWalletLocation},
-	{"TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN", "sanity", false, TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN},
-	{"TestDriver_Prepared_Insert_Select_Ordinal", "sanity", false, TestDriver_Prepared_Insert_Select_Ordinal},
+	{"TestDriver_TCPS_Pipeline_SelectDual", "sanity,functional", false, TestDriver_TCPS_Pipeline_SelectDual},
+	{"TestDriver_TCPS_Pipeline_InvalidCertDn", "sanity,functional", false, TestDriver_TCPS_Pipeline_InvalidCertDn},
+	{"TestDriver_TCPS_Pipeline_InvalidWalletLocation", "sanity,functional", false, TestDriver_TCPS_Pipeline_InvalidWalletLocation},
+	{"TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN", "sanity,functional", false, TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN},
+	{"TestDriver_Prepared_Insert_Select_Ordinal", "sanity,functional", false, TestDriver_Prepared_Insert_Select_Ordinal},
 	{"TestDriver_Prepared_Insert_Select_Named", "functional", false, TestDriver_Prepared_Insert_Select_Named},
 	{"TestDriver_PLSQL_Prepared_Binds", "functional", false, TestDriver_PLSQL_Prepared_Binds},
 	{"TestDriver_Select_BooleanTypes_23c_Prepared_Statement", "functional", false, TestDriver_Select_BooleanTypes_23c_Prepared_Statement},
@@ -312,11 +313,47 @@ func TestCategoryExecutor(t *testing.T) {
 	}
 }
 
+// simple struct to hold version
+type Version struct {
+	Major int
+	Minor int
+	Micro int
+}
+
+func (v *Version) UnmarshalJSON(data []byte) error {
+	var dotted string
+	if err := json.Unmarshal(data, &dotted); err != nil {
+		return err
+	}
+
+	parts := strings.Split(dotted, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("version must contain three dot-separated fields, got %q", dotted)
+	}
+
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return fmt.Errorf("invalid major version: %w", err)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return fmt.Errorf("invalid minor version: %w", err)
+	}
+	micro, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return fmt.Errorf("invalid patch version: %w", err)
+	}
+	v.Major = major
+	v.Minor = minor
+	v.Micro = micro
+	return nil
+}
+
 // TestConfig structure that represents a testing configuration
 // A configuration contains any information neede to connect to a database
 type TestConfig struct {
-	ConfigName      string `json:"config_name"`
-	DatabaseVersion int    `json:"database_version"`
+	ConfigName      string  `json:"config_name"`
+	DatabaseVersion Version `json:"database_version"`
 	Enabled         bool
 
 	Driver struct {
