@@ -413,7 +413,7 @@ func setupOSONFunctionalTable(t *testing.T, table string) (*sql.DB, context.Cont
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 21 {
+	if TestingConfig.DatabaseVersion.Major < 21 {
 		t.Skip("JSON Type is not supported for DB < 21")
 	}
 
