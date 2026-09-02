@@ -88,7 +88,7 @@ type nodeBase struct {
 // Errors:
 //   - none; short input returns false.
 func IsOson(data drvCommon.B1Array) bool {
-	if len(data) < osonHeaderMinSize {
+	if len(data) < osonMinSize {
 		return false
 	}
 	return binary.BigEndian.Uint32(data[:osonUB4Size])&osonMagicPrefixMask == osonMagicPrefix

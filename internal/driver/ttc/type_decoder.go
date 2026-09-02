@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"database/sql/driver"
+	"errors"
 	"reflect"
 	"time"
 
@@ -55,8 +56,6 @@ const (
 	// NumberScaleFloatSentinel is the scale value the server uses to denote FLOAT columns
 	// that are marshalled over the NUMBER wire representation.
 	NumberScaleFloatSentinel int8 = -127
-	// _jsonOsonMagicProbeLen is the minimum byte count needed to identify an OSON payload.
-	_jsonOsonMagicProbeLen = 6
 )
 
 /*
@@ -497,17 +496,19 @@ Parameters:
   - data: Raw TTC payload bytes for the JSON column.
 
 Returns:
-  - driver.Value: raw OSON bytes for OSON payloads, or JSON text for text payloads.
-  - error: currently nil.
+  - driver.Value: raw OSON bytes.
+  - error: an error if the payload is not OSON.
 
 Errors:
-  - None.
+  - Returns an error when the payload is not OSON.
 */
-func DecodeJson(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
-	if len(data) >= _jsonOsonMagicProbeLen && oson.IsOson(data) {
-		return []byte(data), nil
+func DecodeJson(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+	if !oson.IsOson(data) {
+		err := errors.New("invalid OSON bytes")
+		return nil, rowDecodeError(columnContext, err, "JSON")
 	}
-	return string(data), nil
+
+	return []byte(data), nil
 }
 
 /*
