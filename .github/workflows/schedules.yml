@@ -26,14 +26,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   functional_validate_driver:
     runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
     strategy:
       matrix:
         include:
+          - rdbms: base-database-service-19c
+          - rdbms: base-database-service-21c
           - rdbms: base-database-service-26ai
-    timeout-minutes: 6
+          - rdbms: autonomous-transaction-processing-serverless-19c
+          - rdbms: autonomous-transaction-processing-serverless-26ai
+          - rdbms: base-database-service-26ai-rac
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1r
       - uses: ./.github/actions/setup-go-env
@@ -54,7 +58,9 @@ jobs:
           database-protocol: ${{ steps.create_database.outputs.database_protocol }}
           database-user: ${{ steps.create_database.outputs.database_user }}
           database-password: ${{ steps.create_database.outputs.database_password }}
-      - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="functional"
+      - run: |
+          go test -parallel=10  -shuffle=on -v $(go list ./... | grep -v /vendor/ | grep -v go-driver/examples ) -coverpkg=./... -cover -run TestCategoryExecutor -coverprofile=${{ github.workspace }}/coverage-results.out -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="functional"
+          awk 'BEGIN{min=80} /^mode:/ {next} {split($1,a,":"); f=a[1]; s=$2+0; c=$3+0; total[f]+=s; all+=s; if(c>0){covered[f]+=s; cov+=s}} END{for(f in total) printf "%s %.1f%%\n", f, 100*covered[f]/total[f]; pct=all?100*cov/all:0; printf "total: %.1f%%\n", pct; exit(pct>=min?0:1)}' ${{ github.workspace }}/coverage-results.out
       - uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
         if: always()
         with:

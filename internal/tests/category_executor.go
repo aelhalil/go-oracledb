@@ -35,44 +35,29 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
-
-package driver
+package tests
 
 import (
-	"flag"
-	"os"
 	"strings"
 	"testing"
 )
 
-// TestCategory category of tests to be un
-var TestCategory string
-
-func TestMain(m *testing.M) {
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
-	os.Exit(m.Run())
+type CategorizedTestCase struct {
+	Name       string
+	Categories string
+	Exclusive  bool
+	Fn         func(t *testing.T)
 }
 
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{}
+func RunCategoryExecutor(t *testing.T, category string, cases []CategorizedTestCase) {
+	var regularCases []CategorizedTestCase
+	var exclusiveCases []CategorizedTestCase
 
-func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
-	}
-
-	for _, c := range testCases {
-		cats := strings.Split(c.categories, ",")
+	for _, c := range cases {
+		cats := strings.Split(c.Categories, ",")
 		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
-				if c.exclusive {
+			if strings.TrimSpace(p) == category {
+				if c.Exclusive {
 					exclusiveCases = append(exclusiveCases, c)
 				} else {
 					regularCases = append(regularCases, c)
@@ -86,12 +71,12 @@ func TestCategoryExecutor(t *testing.T) {
 		t.Run("parallel", func(t *testing.T) {
 			t.Parallel()
 			for _, c := range regularCases {
-				t.Run(c.name, c.f)
+				t.Run(c.Name, c.Fn)
 			}
 		})
 	}
 
 	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
+		t.Run(c.Name, c.Fn)
 	}
 }

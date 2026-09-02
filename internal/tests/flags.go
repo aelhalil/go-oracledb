@@ -35,41 +35,52 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
-
-package utils
+package tests
 
 import (
+	"flag"
 	"fmt"
-	"os"
-	"testing"
-
-	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-func TestMain(m *testing.M) {
-	err := oracleTest.InitConfig()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
-		os.Exit(1)
-	}
-	TestEnvironement = oracleTest.TestEnvironement
-	TestingConfig = oracleTest.TestingConfig
-	DefaultTestConfig = oracleTest.DefaultTestConfig
-	TestCategory = oracleTest.TestCategory
-	os.Exit(m.Run())
-}
+// Test configuration flag. This flag gives configuration file path
+//
+//	is mandatory to run the test
+var ConfigFileName string
 
-var testCases = []oracleTest.CategorizedTestCase{}
+// Test configuration flag. This flag will specify which
+// configuration to use.
+var ConfigName string
 
-func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
-}
-
-type Version = oracleTest.Version
-type TestConfig = oracleTest.TestConfig
-type TestingEnvironment = oracleTest.TestingEnvironment
-
-var DefaultTestConfig *TestConfig
-var TestEnvironement TestingEnvironment
-var TestingConfig *TestConfig
+// TestCategory category of tests to be un
 var TestCategory string
+
+func init() {
+
+	flag.StringVar(&ConfigFileName, "driver.config.filename", "", "tests config name")
+	flag.StringVar(&ConfigName, "driver.config.name", "", "tests config name")
+
+	flag.StringVar(&TestCategory, "test.category", "", "tests category, can be unitary, functional, performance, robustness")
+}
+
+// InitConfig init the environment configuration
+// Main task is to parse dirver config flags and populate the
+// default configuration
+func InitConfig() error {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+	if len(ConfigFileName) != 0 {
+		env, err := NewTestingEnvironment(ConfigFileName)
+		if err != nil {
+			return fmt.Errorf("cannot get test environment : %w", err)
+		}
+		TestEnvironement = env
+
+		if len(ConfigName) != 0 {
+			TestingConfig, _ = TestEnvironement.GetConfig(ConfigName)
+			// Keep DefaultTestConfig in sync for legacy driver API
+			DefaultTestConfig = TestingConfig
+		}
+	}
+	return nil
+}

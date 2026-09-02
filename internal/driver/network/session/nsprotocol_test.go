@@ -52,6 +52,7 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 type mockNTAdapter struct {
@@ -69,6 +70,23 @@ type mockNTAdapter struct {
 	secondSendErr error
 	receiveCalls  int
 	lastAddress   transport.Address
+}
+
+func TestHandleAcceptRequiredANO(t *testing.T) {
+	ns := newNetworkSession()
+	ns.sAtts = newSessionAtts("")
+	ns.sAtts.version = TNS_VERSION_MIN_DATA_FLAGS
+	p := &acceptPacket{
+		buf:   make([]byte, NSPACFL2+4),
+		flag0: NSINAREQUIRED,
+	}
+	err := ns.handleAccept(context.Background(), p)
+	if err == nil {
+		t.Fatal("expected unsupported Native Network Encryption and Data Integrity error")
+	}
+	if got := err.(oracleErrors.SQLError).ErrorCode(); got != string(oracleErrors.UnsupportedFeature) {
+		t.Fatalf("got error code %s, want %s", got, oracleErrors.UnsupportedFeature)
+	}
 }
 
 type mockNTTCPS struct {

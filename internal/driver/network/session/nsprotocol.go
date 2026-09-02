@@ -209,6 +209,11 @@ func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) err
 		ns.Disconnect(ctx, 0)
 		return err
 	}
+	// The server sets NSINAREQUIRED in an ACCEPT flag when Advanced Networking is required.
+	if (p.flag0|p.flag1)&NSINAREQUIRED != 0 {
+		return common.NewOracleError(oracleErrors.UnsupportedFeature, nil,
+			"Native Network Encryption and Data Integrity")
+	}
 	return nil
 }
 

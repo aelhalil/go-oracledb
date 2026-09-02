@@ -35,8 +35,7 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
-// TODO: we need in comment doc of function to mention the exact Error not just description
-// TODO: also we need logical errors, if malformed we should return an error that covers that context
+
 package oson
 
 import (
