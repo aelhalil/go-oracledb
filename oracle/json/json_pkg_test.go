@@ -39,60 +39,25 @@
 package json
 
 import (
-	"flag"
+	"fmt"
 	"os"
-	"strings"
 	"testing"
+
+	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-// TestCategory selects the test category run by TestCategoryExecutor.
-var TestCategory string
-
 func TestMain(m *testing.M) {
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
+	if err := oracleTest.InitConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
+		os.Exit(1)
+	}
 	os.Exit(m.Run())
 }
 
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{
-	{"TestJSONScanCopiesSourceBytes", "unitary", false, TestJSONScanCopiesSourceBytes},
+var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestJSONScanCopiesSourceBytes", Categories: "unitary", Exclusive: false, Fn: TestJSONScanCopiesSourceBytes},
 }
 
 func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
-	}
-
-	for _, c := range testCases {
-		for _, category := range strings.Split(c.categories, ",") {
-			if strings.TrimSpace(category) == TestCategory {
-				if c.exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
-				break
-			}
-		}
-	}
-
-	if len(regularCases) > 0 {
-		t.Run("parallel", func(t *testing.T) {
-			t.Parallel()
-			for _, c := range regularCases {
-				t.Run(c.name, c.f)
-			}
-		})
-	}
-
-	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
-	}
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
 }

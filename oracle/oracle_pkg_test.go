@@ -262,13 +262,13 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestIssue_ColumnTypePrecisionScale", Categories: "functional", Exclusive: false, Fn: TestIssue_ColumnTypePrecisionScale},
 	{Name: "TestIssue_DecodeBinaryColumnType", Categories: "functional", Exclusive: false, Fn: TestIssue_DecodeBinaryColumnType},
 	{Name: "TestServerError", Categories: "functional", Exclusive: false, Fn: TestServerError},
-	{"TestDriver_OSON_ScalarDocuments", "functional", false, TestDriver_OSON_ScalarDocuments},
-	{"TestDriver_OSON_NestedObject", "functional", false, TestDriver_OSON_NestedObject},
-	{"TestDriver_OSON_NestedArray", "functional", false, TestDriver_OSON_NestedArray},
-	{"TestDriver_OSON_LargeDocument", "functional", false, TestDriver_OSON_LargeDocument},
-	{"TestDriver_OSON_LongUTF8DictionaryKey", "functional", false, TestDriver_OSON_LongUTF8DictionaryKey},
-	{"TestDriver_OSON_JSONWrappers", "functional", false, TestDriver_OSON_JSONWrappers},
-	{"TestDriver_OSON_JSONWrapperErrors", "functional", false, TestDriver_OSON_JSONWrapperErrors},
+	{Name: "TestDriver_OSON_ScalarDocuments", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_ScalarDocuments},
+	{Name: "TestDriver_OSON_NestedObject", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NestedObject},
+	{Name: "TestDriver_OSON_NestedArray", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NestedArray},
+	{Name: "TestDriver_OSON_LargeDocument", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_LargeDocument},
+	{Name: "TestDriver_OSON_LongUTF8DictionaryKey", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_LongUTF8DictionaryKey},
+	{Name: "TestDriver_OSON_JSONWrappers", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_JSONWrappers},
+	{Name: "TestDriver_OSON_JSONWrapperErrors", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_JSONWrapperErrors},
 }
 
 func TestCategoryExecutor(t *testing.T) {
