@@ -40,7 +40,9 @@ package oson
 
 import (
 	"encoding/binary"
+	stdjson "encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -65,6 +67,41 @@ func Parse(data drvCommon.B1Array) (drvCommon.JSONNode, error) {
 	}
 
 	return newNodeAt(buf, header, header.treeSegmentStartOffset)
+}
+
+// classifyJSONValue determines the OSON node kind from a Go value's type.
+//
+// It returns KindScalar for these supported scalar types:
+//
+//   - nil, bool, and string
+//   - int, int8, int16, int32, and int64
+//   - uint, uint8, uint16, uint32, and uint64
+//   - float32 and float64
+//   - []byte, time.Time, JSONNumber, and json.Number
+//
+// It returns KindArray for []any and KindObject for map[string]any.
+//
+// It returns an error when the value's type is not supported by this driver.
+func classifyJSONValue(value any) (drvCommon.Kind, error) {
+	switch value.(type) {
+	case nil,
+		bool,
+		string,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64,
+		[]byte,
+		time.Time,
+		drvCommon.JSONNumber,
+		stdjson.Number:
+		return drvCommon.KindScalar, nil
+	case []any:
+		return drvCommon.KindArray, nil
+	case map[string]any:
+		return drvCommon.KindObject, nil
+	default:
+		return 0, fmt.Errorf("unsupported OSON value type %T", value)
+	}
 }
 
 // nodeBase provides the shared encoded-document context for OSON nodes.

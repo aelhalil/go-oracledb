@@ -98,16 +98,6 @@ type osonEncoder struct {
 	treeSegmentBytes drvCommon.B1Array
 }
 
-// osonValueKind classifies Go types to OSON value shapes.
-type osonValueKind int
-
-const (
-	osonValueObject osonValueKind = iota
-	osonValueArray
-	osonValueScalar
-	osonValueUnsupported
-)
-
 // fieldNameDictionary is the per-document object-key dictionary state.
 type fieldNameDictionary struct {
 	// entriesByName resolves an object key to its planned dictionary entry.
@@ -152,37 +142,16 @@ func newOsonEncoder() *osonEncoder {
 
 // encode converts a supported Go value into an OSON document.
 func (enc *osonEncoder) encode(value any) (drvCommon.B1Array, error) {
-	switch osonKindOf(value) {
-	case osonValueScalar:
+	kind, err := classifyJSONValue(value)
+	if err != nil {
+		common.Odl.Debug("osonEncoder.encode: failed", "error", err)
+		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, err, fmt.Sprintf("%T", value))
+	}
+	switch kind {
+	case drvCommon.KindScalar:
 		return enc.encodeScalarDocument(value)
-	case osonValueArray, osonValueObject:
-		return enc.encodeContainer(value)
-	default:
-		return nil, enc.unsupportedValueError("encode", "root value", value)
 	}
-}
-
-// osonKindOf maps a Go value to the corresponding OSON value shape.
-func osonKindOf(value any) osonValueKind {
-	switch value.(type) {
-	case nil,
-		bool,
-		string,
-		int, int8, int16, int32, int64,
-		uint, uint8, uint16, uint32, uint64,
-		float32, float64,
-		[]byte,
-		time.Time,
-		drvCommon.JSONNumber,
-		stdjson.Number:
-		return osonValueScalar
-	case []any:
-		return osonValueArray
-	case map[string]any:
-		return osonValueObject
-	default:
-		return osonValueUnsupported
-	}
+	return enc.encodeContainer(value)
 }
 
 // encodeScalarDocument converts a supported scalar value into an OSON document.
@@ -315,29 +284,31 @@ func (enc *osonEncoder) emitContainerDocument() drvCommon.B1Array {
 
 // collectFieldNames gathers object keys for the OSON field-name dictionary.
 func (enc *osonEncoder) collectFieldNames(value any) error {
-	switch osonKindOf(value) {
-	case osonValueScalar:
+	kind, err := classifyJSONValue(value)
+	if err != nil {
+		common.Odl.Debug("osonEncoder.collectFieldNames: failed", "error", err)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err, fmt.Sprintf("%T", value))
+	}
+	if kind == drvCommon.KindScalar {
 		return nil
-	case osonValueArray:
+	}
+	if kind == drvCommon.KindArray {
 		for _, child := range value.([]any) {
 			if err := enc.collectFieldNames(child); err != nil {
 				return err
 			}
 		}
 		return nil
-	case osonValueObject:
-		for key, child := range value.(map[string]any) {
-			if err := enc.addFieldName(key); err != nil {
-				return err
-			}
-			if err := enc.collectFieldNames(child); err != nil {
-				return err
-			}
-		}
-		return nil
-	default:
-		return enc.unsupportedValueError("collectFieldNames", "container child", value)
 	}
+	for key, child := range value.(map[string]any) {
+		if err := enc.addFieldName(key); err != nil {
+			return err
+		}
+		if err := enc.collectFieldNames(child); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // addFieldName adds one object key to the correct OSON dictionary tier.
@@ -415,24 +386,18 @@ func sortFieldNames(fields []*fieldNameEntry) {
 
 // writeNode writes one OSON tree node for a supported Go value.
 func (enc *osonEncoder) writeNode(tree *osonWriteBuffer, value any, childOffsetSize int) error {
-	switch osonKindOf(value) {
-	case osonValueScalar:
-		return enc.writeScalarNode(tree, value)
-	case osonValueArray:
-		return enc.writeArrayNode(tree, value.([]any), childOffsetSize)
-	case osonValueObject:
-		return enc.writeObjectNode(tree, value.(map[string]any), childOffsetSize)
-	default:
-		return enc.unsupportedValueError("writeNode", "tree node", value)
+	kind, err := classifyJSONValue(value)
+	if err != nil {
+		common.Odl.Debug("osonEncoder.writeNode: failed", "error", err)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err, fmt.Sprintf("%T", value))
 	}
-}
-
-// unsupportedValueError returns the stable public OSON encoding error for a
-// Go value outside the currently supported encoder surface.
-func (enc *osonEncoder) unsupportedValueError(operation, role string, value any) error {
-	cause := fmt.Errorf("unsupported OSON %s type %T", role, value)
-	common.Odl.Error("osonEncoder."+operation+": failed", "error", cause)
-	return common.NewOracleError(oracleErrors.OsonEncodingError, cause, fmt.Sprintf("%T", value))
+	switch kind {
+	case drvCommon.KindScalar:
+		return enc.writeScalarNode(tree, value)
+	case drvCommon.KindArray:
+		return enc.writeArrayNode(tree, value.([]any), childOffsetSize)
+	}
+	return enc.writeObjectNode(tree, value.(map[string]any), childOffsetSize)
 }
 
 // bufferPatchError wraps an internal offset-table patching failure as an OSON
@@ -565,7 +530,9 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 	case stdjson.Number:
 		return enc.writeStringNumberScalar(tree, v.String())
 	default:
-		return enc.unsupportedValueError("writeScalarNode", "scalar value", value)
+		cause := fmt.Errorf("unsupported OSON scalar value type %T", value)
+		common.Odl.Debug("osonEncoder.writeScalarNode: failed", "error", cause)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, fmt.Sprintf("%T", value))
 	}
 }
 
