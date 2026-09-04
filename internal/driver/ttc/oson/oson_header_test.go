@@ -656,6 +656,23 @@ func TestOsonHeader_ForwardingHelpers(t *testing.T) {
 			assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 		})
 	}
+
+	for _, sample := range []osonSample{sampleUpdatedOverflow, sampleUpdatedOverflowUB4} {
+		doc := sample.cloneOSON()
+		for length := 0; length < len(doc); length++ {
+			_, _ = newOsonHeader(newOsonBuffer(doc[:length]))
+		}
+	}
+
+	if err := (&osonHeader{formatVersion: 2}).readSecondaryDictionary(newOsonBuffer(nil), _parsedDictionaryLayout{secondaryCount: 1, secondaryHeapSize: 1}); err == nil {
+		t.Fatal("readSecondaryDictionary(v2) error = nil, want version failure")
+	}
+	if err := (&osonHeader{formatVersion: 3}).readSecondaryDictionary(newOsonBuffer(nil), _parsedDictionaryLayout{}); err != nil {
+		t.Fatalf("readSecondaryDictionary(empty) error = %v", err)
+	}
+	if err := (&osonHeader{formatVersion: 3}).readSecondaryDictionary(newOsonBuffer(nil), _parsedDictionaryLayout{secondaryCount: 1}); err == nil {
+		t.Fatal("readSecondaryDictionary(empty heap) error = nil, want failure")
+	}
 }
 
 // TestOsonHeader_AddForwardingAddressValidatesMappings verifies update-map
@@ -876,4 +893,70 @@ func buildScalarOsonForTest(tree drvCommon.B1Array, extraFlags drvCommon.UB2, ta
 	doc = append(doc, tree...)
 	doc = append(doc, tail...)
 	return doc
+}
+
+// TestOsonHeader_RejectsTruncatedInput exercises each length-sensitive header
+// reader with a progressively truncated document.
+func TestOsonHeader_RejectsTruncatedInput(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		doc  drvCommon.B1Array
+	}{
+		{"fixed header", sampleSimpleObject.cloneOSON()},
+		{"scalar header", sampleScalarTrue.cloneOSON()},
+		{"update header", sampleUpdatedTinyScalar.cloneOSON()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			limit := len(test.doc)
+			if test.name == "update header" {
+				limit--
+			}
+			for length := 0; length <= limit; length++ {
+				_, _ = newOsonHeader(newOsonBuffer(test.doc[:length]))
+			}
+		})
+	}
+}
+
+// TestOsonHeader_RejectsInvalidSecondaryDictionary covers the independent
+// validation stages of a long-key dictionary entry.
+func TestOsonHeader_RejectsInvalidSecondaryDictionary(t *testing.T) {
+	t.Parallel()
+
+	makeDocument := func(heap drvCommon.B1Array, offset uint32) drvCommon.B1Array {
+		doc := drvCommon.B1Array{0, 0, 0, 0, 0, 0}
+		binary.BigEndian.PutUint32(doc[2:], offset)
+		doc = append(doc, heap...)
+		return doc
+	}
+	cases := []struct {
+		name string
+		doc  drvCommon.B1Array
+		size int
+	}{
+		{"truncated hash", nil, 1},
+		{"truncated offset", drvCommon.B1Array{0, 0}, 1},
+		{"truncated heap", drvCommon.B1Array{0, 0, 0, 0, 0, 0}, 1},
+		{"offset outside heap", makeDocument(drvCommon.B1Array{0}, 1), 1},
+		{"entry missing length", makeDocument(drvCommon.B1Array{0}, 0), 1},
+		{"entry too short for primary tier", makeDocument(drvCommon.B1Array{0, 0}, 0), 2},
+		{"entry exceeds heap", makeDocument(drvCommon.B1Array{1, 0, 0, 0}, 0), 4},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			header := &osonHeader{formatVersion: 3}
+			if err := header.readSecondaryDictionary(newOsonBuffer(test.doc), _parsedDictionaryLayout{secondaryCount: 1, secondaryHeapSize: test.size}); err == nil {
+				t.Fatal("readSecondaryDictionary() error = nil, want malformed-entry failure")
+			}
+		})
+	}
+
+	heap := append(drvCommon.B1Array{1, 0}, drvCommon.B1Array{0xff}...)
+	heap = append(heap, make(drvCommon.B1Array, 255)...)
+	header := &osonHeader{formatVersion: 3}
+	if err := header.readSecondaryDictionary(newOsonBuffer(makeDocument(heap, 0)), _parsedDictionaryLayout{secondaryCount: 1, secondaryHeapSize: len(heap)}); err == nil {
+		t.Fatal("readSecondaryDictionary(invalid UTF-8) error = nil, want failure")
+	}
 }

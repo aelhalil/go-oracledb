@@ -140,6 +140,14 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestScalarNode_KindAndStringWithOption", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_KindAndStringWithOption},
 	{Name: "TestScalarNode_MalformedScalarPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_MalformedScalarPayloads},
 	{Name: "TestScalarNode_BinaryFloatSpecialValue", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_BinaryFloatSpecialValue},
+	{Name: "TestOsonHeader_RejectsTruncatedInput", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsTruncatedInput},
+	{Name: "TestOsonHeader_RejectsInvalidSecondaryDictionary", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsInvalidSecondaryDictionary},
+	{Name: "TestNode_ReadHelpersRejectMalformedInput", Categories: "unitary", Exclusive: false, Fn: TestNode_ReadHelpersRejectMalformedInput},
+	{Name: "TestScalarNode_RejectsTruncatedPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsTruncatedPayloads},
+	{Name: "TestScalarNode_RejectsUnsupportedOpcode", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsUnsupportedOpcode},
+	{Name: "TestNode_RedirectReadsRejectTruncatedPayloads", Categories: "unitary", Exclusive: false, Fn: TestNode_RedirectReadsRejectTruncatedPayloads},
+	{Name: "TestObjectNode_ReadersRejectTruncatedLayouts", Categories: "unitary", Exclusive: false, Fn: TestObjectNode_ReadersRejectTruncatedLayouts},
+	{Name: "TestScalarNode_RejectsUnsupportedOpcode", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsUnsupportedOpcode},
 }
 
 func TestCategoryExecutor(t *testing.T) {

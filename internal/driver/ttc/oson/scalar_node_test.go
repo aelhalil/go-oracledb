@@ -661,3 +661,88 @@ func TestScalarNode_BinaryFloatSpecialValue(t *testing.T) {
 		t.Fatalf("got %#v, want +Inf", got)
 	}
 }
+
+// TestScalarNode_RejectsUnsupportedOpcode verifies unknown scalar opcodes are
+// rejected without attempting to interpret their payload.
+func TestScalarNode_RejectsUnsupportedOpcode(t *testing.T) {
+	node := &scalarNode{
+		nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{0x7f})},
+		opcode:   0x7f,
+	}
+	if _, err := node.Value(drvCommon.JSONOptDefault); err == nil {
+		t.Fatal("Value() error = nil, want unsupported-opcode failure")
+	}
+}
+
+// TestScalarNode_RejectsTruncatedPayloads exercises the payload bounds check
+// for each variable and fixed-width scalar family.
+func TestScalarNode_RejectsTruncatedPayloads(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		opcode drvCommon.UB1
+		data   drvCommon.B1Array
+	}{
+		{"short string", 1, nil},
+		{"compact signed32", osonOpCompactSigned32Prefix | 1, nil},
+		{"compact signed64", osonOpCompactSigned64Prefix | 1, nil},
+		{"compact number", osonOpCompactOracleNumberPrefix, nil},
+		{"compact decimal", osonOpCompactDecimalPrefix, nil},
+		{"string ub1", osonOpStringUB1, drvCommon.B1Array{1}},
+		{"string ub2", osonOpStringUB2, drvCommon.B1Array{0, 1}},
+		{"string ub4", osonOpStringUB4, drvCommon.B1Array{0, 0, 0, 1}},
+		{"oracle number", osonOpOracleNumber, drvCommon.B1Array{1}},
+		{"string number", osonOpStringNumber, drvCommon.B1Array{1}},
+		{"binary float", osonOpBinaryFloat, nil},
+		{"binary double", osonOpBinaryDouble, nil},
+		{"date", osonOpDate, nil},
+		{"timestamp", osonOpTimestamp, nil},
+		{"timestamp7", osonOpTimestamp7, nil},
+		{"timestamp timezone", osonOpTimestampTZ, nil},
+		{"interval year-month", osonOpIntervalYM, nil},
+		{"interval day-second", osonOpIntervalDS, nil},
+		{"id", osonOpID, drvCommon.B1Array{1}},
+		{"binary ub2", osonOpBinaryUB2, drvCommon.B1Array{0, 1}},
+		{"binary ub4", osonOpBinaryUB4, drvCommon.B1Array{0, 0, 0, 1}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			payload := append(drvCommon.B1Array{byte(test.opcode)}, test.data...)
+			scalar := &scalarNode{
+				nodeBase: nodeBase{buf: newOsonBuffer(payload)},
+				opcode:   test.opcode,
+			}
+			if _, err := scalar.Value(drvCommon.JSONOptDefault); err == nil {
+				t.Fatal("Value() error = nil, want truncated-payload failure")
+			}
+		})
+	}
+
+	for _, opcode := range []drvCommon.UB1{
+		osonOpStringUB1, osonOpStringUB2, osonOpStringUB4,
+		osonOpOracleNumber, osonOpStringNumber, osonOpID,
+		osonOpBinaryUB2, osonOpBinaryUB4,
+	} {
+		t.Run("truncated length prefix", func(t *testing.T) {
+			scalar := &scalarNode{
+				nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{byte(opcode)})},
+				opcode:   opcode,
+			}
+			if _, err := scalar.Value(drvCommon.JSONOptDefault); err == nil {
+				t.Fatalf("Value(%#x) error = nil, want truncated-length failure", opcode)
+			}
+		})
+	}
+
+	if _, err := newScalarNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
+		t.Fatal("newScalarNodeAt() error = nil, want out-of-range failure")
+	}
+	invalidNumber := &scalarNode{
+		nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{osonOpStringNumber, 1, 'x'})},
+		opcode:   osonOpStringNumber,
+	}
+	if _, err := invalidNumber.Value(drvCommon.JSONOptDefault); err == nil {
+		t.Fatal("invalid string number error = nil, want parse failure")
+	}
+}

@@ -57,6 +57,54 @@ func TestObjectNode_KindReportsObject(t *testing.T) {
 	}
 }
 
+// TestObjectNode_ReadersRejectTruncatedLayouts exercises object
+// metadata readers directly for each supported field-id width and delegate
+// reference width.
+func TestObjectNode_ReadersRejectTruncatedLayouts(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		flags drvCommon.UB2
+		bytes drvCommon.B1Array
+	}{
+		{"field ID UB1", 0, nil},
+		{"field ID UB2", osonFlagDistinctFieldCountUB2Mask, drvCommon.B1Array{0}},
+		{"field ID UB4", osonFlagDistinctFieldCountUB4Mask, drvCommon.B1Array{0, 0, 0}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			header := &osonHeader{flags: test.flags}
+			if _, err := readFieldIDEntriesAt(newOsonBuffer(test.bytes), header, 0, 1); err == nil {
+				t.Fatal("readFieldIDEntriesAt() error = nil, want truncation")
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name   string
+		opcode drvCommon.UB1
+		bytes  drvCommon.B1Array
+	}{
+		{"direct count", osonOpObjectType | osonOpChildCountUB2, drvCommon.B1Array{osonOpObjectType | osonOpChildCountUB2}},
+		{"delegate UB2", osonOpObjectType | osonOpChildDelegateForm, drvCommon.B1Array{osonOpObjectType | osonOpChildDelegateForm}},
+		{"delegate UB4", osonOpObjectType | osonOpChildDelegateForm | osonOpChildOffsetUB4Bit, drvCommon.B1Array{osonOpObjectType | osonOpChildDelegateForm | osonOpChildOffsetUB4Bit}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			header := &osonHeader{treeSegmentStartOffset: 0}
+			if _, _, _, err := readObjectLayout(newOsonBuffer(test.bytes), header, 0, test.opcode); err == nil {
+				t.Fatal("readObjectLayout() error = nil, want malformed-layout failure")
+			}
+		})
+	}
+
+	if _, err := newObjectNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
+		t.Fatal("newObjectNodeAt() error = nil, want out-of-range failure")
+	}
+	if _, _, _, err := readObjectLayout(newOsonBuffer(drvCommon.B1Array{osonOpObjectType | 0x03}), &osonHeader{}, 0, osonOpObjectType|0x03); err == nil {
+		t.Fatal("readObjectLayout(unsupported count) error = nil, want failure")
+	}
+}
+
 // TestObjectNode_SimpleObjectTraversal verifies key lookup, full materialization, and JSON rendering for the basic object fixture.
 func TestObjectNode_SimpleObjectTraversal(t *testing.T) {
 	t.Parallel()

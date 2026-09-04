@@ -291,3 +291,57 @@ func TestParse_RejectsForwardingCycle(t *testing.T) {
 	}
 	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 }
+
+// TestNode_ReadHelpersRejectMalformedInput covers error exits that
+// are difficult to reach through a complete document.
+func TestNode_ReadHelpersRejectMalformedInput(t *testing.T) {
+	t.Parallel()
+
+	buf := newOsonBuffer(drvCommon.B1Array{0x00, 0x00, 0x00, 0x00})
+	for _, opcode := range []drvCommon.UB1{
+		osonOpArrayType | osonOpChildCountUB1,
+		osonOpArrayType | osonOpChildCountUB2,
+		osonOpArrayType | osonOpChildCountUB4,
+	} {
+		if _, _, err := readContainerCountAt(buf, len(buf.data), opcode); err == nil {
+			t.Fatalf("readContainerCountAt(%#x) error = nil, want truncation", opcode)
+		}
+	}
+	if _, _, err := readContainerCountAt(buf, 0, osonOpArrayType|osonOpChildDelegateForm); err == nil {
+		t.Fatal("readContainerCountAt(delegate) error = nil, want unsupported encoding")
+	}
+
+	header := &osonHeader{treeSegmentStartOffset: 0, treeSegmentByteLength: 4}
+	for _, width := range []int{osonUB2Size, osonUB4Size} {
+		if _, err := readChildOffsetAt(buf, header, 0, len(buf.data), width); err == nil {
+			t.Fatalf("readChildOffsetAt(width=%d) error = nil, want truncation", width)
+		}
+	}
+	if _, err := readChildOffsetAt(buf, header, 0, 0, 1); err == nil {
+		t.Fatal("readChildOffsetAt(width=1) error = nil, want unsupported width")
+	}
+	if _, err := readRelativeChildOffset(buf, 0, 1); err == nil {
+		t.Fatal("readRelativeChildOffset(width=1) error = nil, want unsupported width")
+	}
+}
+
+// TestNode_RedirectReadsRejectTruncatedPayloads covers both inline
+// forwarding address widths when their payload is incomplete.
+func TestNode_RedirectReadsRejectTruncatedPayloads(t *testing.T) {
+	t.Parallel()
+	header := &osonHeader{}
+	for _, test := range []struct {
+		name string
+		op   drvCommon.UB1
+		data drvCommon.B1Array
+	}{
+		{"UB2", osonOpUpdateForwardUB2, drvCommon.B1Array{osonOpUpdateForwardUB2, 0}},
+		{"UB4", osonOpUpdateForwardUB4, drvCommon.B1Array{osonOpUpdateForwardUB4, 0, 0, 0}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, _, err := redirectedNodeOffset(newOsonBuffer(test.data), header, 0, test.op); err == nil {
+				t.Fatal("redirectedNodeOffset() error = nil, want truncated-payload failure")
+			}
+		})
+	}
+}

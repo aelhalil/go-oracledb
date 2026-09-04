@@ -183,4 +183,8 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 			})
 		}
 	})
+
+	if _, err := newArrayNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
+		t.Fatal("newArrayNodeAt(empty) error = nil, want out-of-range failure")
+	}
 }
