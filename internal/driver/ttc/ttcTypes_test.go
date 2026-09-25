@@ -41,11 +41,9 @@ package ttc
 import (
 	"bytes"
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // Marshals and unmarshals a keywordValueArray and checks that the sizes and values match
@@ -397,12 +395,10 @@ func TestMarshalKeyValuePairWithName(t *testing.T) {
 	wantBinary := common.B1Array{0x00, 0x01, 0xff}
 	const wantFlag common.UB4 = 0x12345678
 
-	kve, err := newKeywordValuePairWithName(
+	kve := newKeywordValuePairWithName(
 		string(wantKey), string(wantText), wantBinary, wantFlag,
 	)
-	if err != nil {
-		t.Fatalf("newKeywordValuePairWithName failed: %v", err)
-	}
+
 	if err := kve.MarshalTo(ctx, engine); err != nil {
 		t.Fatalf("MarshalTo failed: %v", err)
 	}
@@ -432,56 +428,6 @@ func TestMarshalKeyValuePairWithName(t *testing.T) {
 			}
 			if !bytes.Equal(got.value, tt.want) {
 				t.Fatalf("%s = %x, want %x", tt.name, got.value, tt.want)
-			}
-		})
-	}
-}
-
-// TestNewKeywordValuePairWithNameLimits verifies byte-length validation during
-// DTYKVE record creation.
-func TestNewKeywordValuePairWithNameLimits(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		key         string
-		textValue   string
-		binaryValue common.B1Array
-		wantErr     bool
-	}{
-		{
-			name:    "key too long",
-			key:     strings.Repeat("k", maxKPDKVEKeyLength+1),
-			wantErr: true,
-		},
-		{
-			name:      "text value too long",
-			textValue: strings.Repeat("v", maxKPDKVEValueLength+1),
-			wantErr:   true,
-		},
-		{
-			name:        "binary value too long",
-			binaryValue: bytes.Repeat([]byte{0xab}, maxKPDKVEValueLength+1),
-			wantErr:     true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := newKeywordValuePairWithName(
-				tt.key, tt.textValue, tt.binaryValue, 0,
-			)
-
-			if err == nil {
-				t.Fatal("expected newKeywordValuePairWithName to fail")
-			}
-
-			sqlErr, ok := err.(oracleErrors.SQLError)
-			if !ok {
-				t.Fatalf("expected SQLError, got %T", err)
-			}
-			if got, want := sqlErr.ErrorCode(), string(oracleErrors.ProtocolViolationLimitExceeded); got != want {
-				t.Fatalf("unexpected error code: got %s, want %s", got, want)
 			}
 		})
 	}
