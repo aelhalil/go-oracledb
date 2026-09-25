@@ -71,6 +71,7 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestNormalizeDialError_PreservesDNSTimeout", Categories: "unitary", Exclusive: false, Fn: TestNormalizeDialError_PreservesDNSTimeout},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_HappyPath", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_HappyPath},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_NilBlock", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_NilBlock},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_WrongBlockType", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_WrongBlockType},
@@ -97,6 +98,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestVerifyDNWithMultiValuedRDN", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNWithMultiValuedRDN},
 	{Name: "TestVerifyDNAllowsAliases", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNAllowsAliases},
 	{Name: "TestVerifyDNAllowsRepeatedAttributeAcrossRDNs", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNAllowsRepeatedAttributeAcrossRDNs},
+	{Name: "TestParseDNAttributeDecodesEscapedValues", Categories: "unitary", Exclusive: false, Fn: TestParseDNAttributeDecodesEscapedValues},
 	{Name: "TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse},
 	{Name: "TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse},
 	{Name: "TestDecrypt_UnsupportedOID", Categories: "unitary", Exclusive: false, Fn: TestDecrypt_UnsupportedOID},
