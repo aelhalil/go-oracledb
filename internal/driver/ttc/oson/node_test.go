@@ -80,7 +80,7 @@ func TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("newNodeAt() error = %v", err)
 		}
-		value, err := node.GetValue(drvCommon.JSONOptDefault)
+		value, err := node.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 		if err != nil {
 			t.Fatalf("GetValue() error = %v", err)
 		}
@@ -175,7 +175,7 @@ func TestParse_RejectsOutOfRangeRelativeChildOffset(t *testing.T) {
 
 	root, err := Parse(doc)
 	if err == nil {
-		_, err = root.GetValue(drvCommon.JSONOptDefault)
+		_, err = root.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	}
 	if err == nil {
 		t.Fatal("GetValue() error = nil, want out-of-range relative-offset failure")
@@ -249,7 +249,7 @@ func TestParse_RejectsInvalidUpdateTargets(t *testing.T) {
 			test.mutate(doc, header)
 			root, err := Parse(doc)
 			if err == nil {
-				_, err = root.GetValue(drvCommon.JSONOptNumberAsString)
+				_, err = root.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 			}
 			if err == nil {
 				t.Fatal("GetValue() error = nil, want invalid-forward-target failure")
@@ -284,7 +284,7 @@ func TestParse_RejectsForwardingCycle(t *testing.T) {
 
 	root, err := Parse(doc)
 	if err == nil {
-		_, err = root.GetValue(drvCommon.JSONOptDefault)
+		_, err = root.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	}
 	if err == nil {
 		t.Fatal("GetValue() error = nil, want forwarding-cycle failure")

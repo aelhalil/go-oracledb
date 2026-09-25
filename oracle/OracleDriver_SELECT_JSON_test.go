@@ -219,6 +219,7 @@ func TestDriver_Table_Select_NullJSON(t *testing.T) {
 		t.Fatalf("expected NULL json, got valid string: %q", v)
 	}
 
+	// test scanning into JSON directly should fails
 	var jsonOut2 ojson.JSON
 	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(1))).Scan(&jsonOut2); err == nil {
 		t.Fatalf("select/scan NULL json column failed: expected error")
@@ -343,52 +344,24 @@ func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 func assertSameJSONDocument(t *testing.T, got ojson.JSON, wantText string) {
 	t.Helper()
 
-	gotValue, err := got.GetValue(ojson.JSONOptNumberAsString)
+	if err := got.SetOptions(ojson.NumberModeOption(ojson.NumberAsJSONNumber)); err != nil {
+		t.Fatalf("JSON.SetOptions() failed: %v", err)
+	}
+	gotValue, err := got.GetValue()
 	if err != nil {
 		t.Fatalf("JSON.GetValue() failed: %v", err)
 	}
 
-	wantValue := decodeExpectedJSONValue(t, wantText)
+	// unmarshal json text
+	var wantValue any
+	decoder := stdjson.NewDecoder(strings.NewReader(wantText))
+	decoder.UseNumber()
+	if err := decoder.Decode(&wantValue); err != nil {
+		t.Fatalf("expected JSON decode failed: %v\njson: %s", err, wantText)
+	}
+
 	if !reflect.DeepEqual(gotValue, wantValue) {
 		gotText := got.String()
 		t.Fatalf("JSON mismatch:\n got:  %s\nwant: %s", gotText, wantText)
-	}
-}
-
-// decodeExpectedJSONValue decodes expected JSON text with numeric precision
-// preserved so it can be compared with JSONOptNumberAsString materialization.
-func decodeExpectedJSONValue(t *testing.T, text string) any {
-	t.Helper()
-
-	var value any
-	decoder := stdjson.NewDecoder(strings.NewReader(text))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		t.Fatalf("expected JSON decode failed: %v\njson: %s", err, text)
-	}
-
-	return convertJSONNumbers(value)
-}
-
-// convertJSONNumbers converts encoding/json numbers into the driver's JSON
-// number type recursively, matching JSON.GetValue(JSONOptNumberAsString).
-func convertJSONNumbers(value any) any {
-	switch v := value.(type) {
-	case stdjson.Number:
-		return ojson.Number(v.String())
-	case map[string]any:
-		out := make(map[string]any, len(v))
-		for key, elem := range v {
-			out[key] = convertJSONNumbers(elem)
-		}
-		return out
-	case []any:
-		out := make([]any, len(v))
-		for i, elem := range v {
-			out[i] = convertJSONNumbers(elem)
-		}
-		return out
-	default:
-		return v
 	}
 }

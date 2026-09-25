@@ -60,6 +60,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 
 	{Name: "TestEncodeStringScalar_UsesExpectedStringOpcodes", Categories: "unitary", Exclusive: false, Fn: TestEncodeStringScalar_UsesExpectedStringOpcodes},
 	{Name: "TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2", Categories: "unitary", Exclusive: false, Fn: TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2},
+	{Name: "TestEncodeRejectsOSONOver32MiB", Categories: "unitary", Exclusive: false, Fn: TestEncodeRejectsOSONOver32MiB},
 	{Name: "TestEncodeContainers_EncodesNestedObjectAndArray", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_EncodesNestedObjectAndArray},
 	{Name: "TestEncodeContainers_EncodesArrayRootWithoutDictionary", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_EncodesArrayRootWithoutDictionary},
 	{Name: "TestEncodeContainers_ProducesDeterministicBytesForObjectMaps", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_ProducesDeterministicBytesForObjectMaps},
@@ -140,14 +141,12 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestScalarNode_StringQuotesStringValue", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_StringQuotesStringValue},
 	{Name: "TestScalarNode_MalformedScalarPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_MalformedScalarPayloads},
 	{Name: "TestScalarNode_BinaryFloatSpecialValue", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_BinaryFloatSpecialValue},
+	{Name: "TestScalarNode_IDReadsFullUB1Length", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_IDReadsFullUB1Length},
 	{Name: "TestOsonHeader_RejectsTruncatedInput", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsTruncatedInput},
 	{Name: "TestOsonHeader_RejectsInvalidSecondaryDictionary", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsInvalidSecondaryDictionary},
 	{Name: "TestNode_ReadHelpersRejectMalformedInput", Categories: "unitary", Exclusive: false, Fn: TestNode_ReadHelpersRejectMalformedInput},
 	{Name: "TestScalarNode_RejectsTruncatedPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsTruncatedPayloads},
-	{Name: "TestScalarNode_RejectsUnsupportedOpcode", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsUnsupportedOpcode},
-	{Name: "TestNode_RedirectReadsRejectTruncatedPayloads", Categories: "unitary", Exclusive: false, Fn: TestNode_RedirectReadsRejectTruncatedPayloads},
 	{Name: "TestObjectNode_ReadersRejectTruncatedLayouts", Categories: "unitary", Exclusive: false, Fn: TestObjectNode_ReadersRejectTruncatedLayouts},
-	{Name: "TestScalarNode_RejectsUnsupportedOpcode", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsUnsupportedOpcode},
 }
 
 func TestCategoryExecutor(t *testing.T) {

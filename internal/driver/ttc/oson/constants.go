@@ -61,6 +61,8 @@ const (
 
 	// osonMinSize is the minimum size of a complete OSON document.
 	osonMinSize = 9
+	// osonMaxDocumentSize is the maximum OSON size supported by the native JSON type.
+	osonMaxDocumentSize = 32 * 1024 * 1024
 	// osonMagicPrefixMask selects the magic-prefix bytes from the first header word.
 	osonMagicPrefixMask = 0xff_ff_ff_00
 	// osonVersionByteMask selects the format-version byte from the first header word.

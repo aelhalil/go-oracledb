@@ -39,6 +39,7 @@
 package oson
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -89,20 +90,20 @@ func TestArrayNode_NestedObjectArrayTraversal(t *testing.T) {
 	if !found {
 		t.Fatal("expected index 0 to resolve to the first items-array child")
 	}
-	firstItemValue, err := firstItemNode.GetValue(drvCommon.JSONOptNumberAsString)
+	firstItemValue, err := firstItemNode.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 	if err != nil {
 		t.Fatalf("failed to materialize items[0] with numbers preserved as strings: %v", err)
 	}
-	if firstItemValue != drvCommon.JSONNumber("1") {
-		t.Fatalf("expected items[0] to materialize as JSONNumber(%q), got %#v", "1", firstItemValue)
+	if firstItemValue != json.Number("1") {
+		t.Fatalf("expected items[0] to materialize as json.Number(%q), got %#v", "1", firstItemValue)
 	}
 
-	itemsSlice, err := itemsNode.GetValue(drvCommon.JSONOptNumberAsString)
+	itemsSlice, err := itemsNode.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 	if err != nil {
 		t.Fatalf("failed to materialize the items array with numbers preserved as strings: %v", err)
 	}
 	want := []any{
-		drvCommon.JSONNumber("1"),
+		json.Number("1"),
 		true,
 		nil,
 		map[string]any{"x": []any{map[string]any{"y": "z"}}},
@@ -145,7 +146,7 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 		if _, ok := arrayWithInvalidChildOffset.Get(0); ok {
 			t.Fatal("Get(0) with invalid child offset found = true, want false")
 		}
-		if _, err := arrayWithInvalidChildOffset.Value(drvCommon.JSONOptDefault); err == nil {
+		if _, err := arrayWithInvalidChildOffset.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
 			t.Fatal("Value() with invalid child offset error = nil, want failure")
 		} else {
 			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)

@@ -112,40 +112,44 @@ const (
 	KindScalar
 )
 
-// JSONNumber holds the decimal text of a JSON number.
-//
-// JSONNumber exists so an OSON NUMBER can be materialized without first being
-// rounded to float64. It is analogous to [encoding/json.Number]: although its
-// Go representation is a string, MarshalJSON writes it as a JSON number rather
-// than as a quoted JSON string.
-//
-// A JSONNumber is expected to contain a valid JSON number. MarshalJSON does not
-// validate values constructed directly by a caller.
-type JSONNumber string
-
-// MarshalJSON returns num as an unquoted JSON number.
-func (num JSONNumber) MarshalJSON() ([]byte, error) {
-	return []byte(num), nil
-}
-
-// JSONOption controls how an OSON node is converted to ordinary Go values.
-// Options affect the whole value: an object or array passes the selected option
-// to every descendant it materializes.
-type JSONOption uint8
+// JSONNumberMode selects the Go representation used when OSON numbers are
+// materialized.
+type JSONNumberMode uint8
 
 const (
-	// JSONOptDefault materializes JSON numbers as float64. This matches the
-	// default representation used when encoding/json decodes into an any, but
-	// conversion can round integers and decimals that float64 cannot represent
-	// exactly.
-	JSONOptDefault JSONOption = iota
-
-	// JSONOptNumberAsString materializes JSON numbers as JSONNumber. Use this
-	// option when decimal digits must survive decoding, comparison, and a later
-	// JSON or OSON encoding without float64 rounding. The result remains a JSON
-	// number, not a JSON string.
-	JSONOptNumberAsString
+	// JSONNumberDefault preserves the OSON numeric category.
+	JSONNumberDefault JSONNumberMode = iota
+	// JSONNumberAsJSONNumber returns finite values as encoding/json.Number.
+	JSONNumberAsJSONNumber
+	// JSONNumberAsFloat64 converts numbers to float64.
+	JSONNumberAsFloat64
 )
+
+// JSONTimeEncoding selects the OSON scalar used to encode time.Time values.
+type JSONTimeEncoding uint8
+
+const (
+	// JSONTimeAsTimestamp preserves calendar fields and nanoseconds without a time zone.
+	// For example, 2026-09-23T12:34:56.123456789+01:00 is stored as the
+	// TIMESTAMP value 2026-09-23T12:34:56.123456789.
+	JSONTimeAsTimestamp JSONTimeEncoding = iota
+	// JSONTimeAsTimestampTZ preserves calendar fields, nanoseconds, and the UTC offset.
+	// For example, 2026-09-23T12:34:56.123456789+01:00 is stored as a
+	// TIMESTAMP WITH TIME ZONE value with offset +01:00. The IANA location name
+	// is not stored.
+	JSONTimeAsTimestampTZ
+	// JSONTimeAsDate preserves calendar fields through whole seconds without a time zone.
+	// For example, 2026-09-23T12:34:56.123456789+01:00 is stored as the DATE
+	// value 2026-09-23T12:34:56; fractional seconds are truncated.
+	JSONTimeAsDate
+)
+
+// JSONConversionOptions contains the resolved settings for an OSON conversion.
+// The zero value selects JSONNumberDefault and JSONTimeAsTimestamp.
+type JSONConversionOptions struct {
+	NumberMode   JSONNumberMode
+	TimeEncoding JSONTimeEncoding
+}
 
 // JSONNode represents one value in an OSON byte sequence.
 //
@@ -156,7 +160,7 @@ const (
 // complete subtree. This lets callers inspect a large document without
 // converting parts they do not need.
 //
-// Implementations must propagate the requested JSONOption through the entire
+// Implementations must propagate the requested JSONConversionOptions through the entire
 // subtree and return an error if any selected child cannot be decoded. The
 // materialized forms are map[string]any for objects, []any for arrays, and the
 // corresponding Go value for scalars.
@@ -181,7 +185,7 @@ type JSONNode interface {
 	// specialized node must make Value(opts) and GetValue(opts) describe the
 	// same value; Value exists separately because Go interface methods cannot
 	// refine an any return type to map[string]any or []any.
-	GetValue(opts JSONOption) (any, error)
+	GetValue(opts JSONConversionOptions) (any, error)
 
 	// String returns the JSON text representation of the node. It returns
 	// an error if the node cannot be decoded or represented as JSON.
@@ -212,7 +216,7 @@ type JSONObjectNode interface {
 
 	// Value recursively materializes the object as a map. It is the typed form
 	// of GetValue; both methods must apply opts to every member.
-	Value(opts JSONOption) (map[string]any, error)
+	Value(opts JSONConversionOptions) (map[string]any, error)
 }
 
 // JSONArrayNode is a JSONNode whose Kind is KindArray.
@@ -233,7 +237,7 @@ type JSONArrayNode interface {
 	// Value recursively materializes the array as a slice, preserving element
 	// order. It is the typed form of GetValue; both methods must apply opts to
 	// every element.
-	Value(opts JSONOption) ([]any, error)
+	Value(opts JSONConversionOptions) ([]any, error)
 }
 
 // JSONScalarNode is a JSONNode whose Kind is KindScalar.
@@ -247,5 +251,5 @@ type JSONScalarNode interface {
 	// Value decodes the scalar using opts. It is the typed-shape counterpart of
 	// GetValue; for a scalar both return any because the concrete Go type depends
 	// on the OSON scalar encoding.
-	Value(opts JSONOption) (any, error)
+	Value(opts JSONConversionOptions) (any, error)
 }

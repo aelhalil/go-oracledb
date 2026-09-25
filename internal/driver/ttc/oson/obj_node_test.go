@@ -139,7 +139,7 @@ func TestObjectNode_SimpleObjectTraversal(t *testing.T) {
 	if !found || nameNode == nil {
 		t.Fatalf("expected Get(%q) to return a child node, got node %v with found=%t", "name", nameNode, found)
 	}
-	name, err := nameNode.GetValue(drvCommon.JSONOptDefault)
+	name, err := nameNode.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	if err != nil {
 		t.Fatalf("failed to materialize the child returned by Get(%q): %v", "name", err)
 	}
@@ -147,7 +147,7 @@ func TestObjectNode_SimpleObjectTraversal(t *testing.T) {
 		t.Fatalf("expected Get(%q) to resolve to %q, got %#v", "name", "Alice", name)
 	}
 
-	gotValue, err := obj.Value(drvCommon.JSONOptDefault)
+	gotValue, err := obj.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	if err != nil {
 		t.Fatalf("failed to materialize the valid simple-object fixture: %v", err)
 	}
@@ -214,24 +214,24 @@ func TestObjectNode_SecondaryDictionaryTraversal(t *testing.T) {
 	if !found {
 		t.Fatal("Get(long key) found = false, want true")
 	}
-	longValue, err := longNode.GetValue(drvCommon.JSONOptNumberAsString)
+	longValue, err := longNode.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 	if err != nil {
 		t.Fatalf("long key GetValue() error = %v", err)
 	}
-	if longValue != drvCommon.JSONNumber("1") {
-		t.Fatalf("long key value = %#v, want JSONNumber(\"1\")", longValue)
+	if longValue != json.Number("1") {
+		t.Fatalf("long key value = %#v, want json.Number(\"1\")", longValue)
 	}
 
 	shortNode, found := obj.Get("short")
 	if !found {
 		t.Fatal("Get(short) found = false, want true")
 	}
-	shortValue, err := shortNode.GetValue(drvCommon.JSONOptNumberAsString)
+	shortValue, err := shortNode.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 	if err != nil {
 		t.Fatalf("short GetValue() error = %v", err)
 	}
-	if shortValue != drvCommon.JSONNumber("2") {
-		t.Fatalf("short value = %#v, want JSONNumber(\"2\")", shortValue)
+	if shortValue != json.Number("2") {
+		t.Fatalf("short value = %#v, want json.Number(\"2\")", shortValue)
 	}
 
 	if _, found := obj.Get("missing"); found {
@@ -291,7 +291,7 @@ func testObjectNodeRejectsMalformedFieldIDAndChildOffset(t *testing.T) {
 	if err != nil {
 		return
 	}
-	if _, err := badRoot.Value(drvCommon.JSONOptDefault); err == nil {
+	if _, err := badRoot.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
 		t.Fatal("Value() with out-of-tree child offset error = nil, want error")
 	}
 }
@@ -379,7 +379,7 @@ func TestObjectNode_SharedOverflowUsesPrimaryTreeOffsets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to parse the constructed shared-object overflow document: %v", err)
 	}
-	value, err := root.GetValue(drvCommon.JSONOptNumberAsString)
+	value, err := root.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 	if err != nil {
 		t.Fatalf("failed to materialize the constructed shared-object overflow document: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestObjectNode_RejectsInvalidDelegateReferences(t *testing.T) {
 
 			root, err := Parse(doc)
 			if err == nil {
-				_, err = root.GetValue(drvCommon.JSONOptDefault)
+				_, err = root.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 			}
 			if err == nil {
 				t.Fatal("GetValue() error = nil, want invalid-delegate failure")

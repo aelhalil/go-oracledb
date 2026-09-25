@@ -87,9 +87,10 @@ func main() {
 	}
 
 	// JSON encodes a supported Go value and binds it as Oracle JSON.
+	doc, _ := ojson.NewJSON(map[string]any{"name": "Bob", "active": true})
 	if _, err := db.ExecContext(ctx,
 		"insert into "+table+" (id, doc) values (:1, :2)",
-		2, ojson.JSON{Data: map[string]any{"name": "Bob", "active": true}},
+		2, doc,
 	); err != nil {
 		log.Fatal(err)
 	}
@@ -106,11 +107,15 @@ func main() {
 		if err := rows.Scan(&doc); err != nil {
 			log.Fatal(err)
 		}
+
+		// setup number decoding as json.Number
+		opts := ojson.NumberModeOption(ojson.NumberAsJSONNumber)
+		doc.SetOptions(opts)
+
 		text := doc.String()
 		fmt.Printf("JSON text: %s\n", text)
 
-		// Decode JSON numbers as ojson.Number to preserve their precision.
-		value, err := doc.GetValue(ojson.JSONOptNumberAsString)
+		value, err := doc.GetValue()
 		if err != nil {
 			log.Fatal(err)
 		}

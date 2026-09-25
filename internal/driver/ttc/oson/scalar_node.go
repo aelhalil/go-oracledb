@@ -124,7 +124,7 @@ func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*scalarNo
 //
 // Errors:
 //   - unsupported scalar opcode or payload decode failure.
-func (scalar *scalarNode) GetValue(opt drvCommon.JSONOption) (any, error) {
+func (scalar *scalarNode) GetValue(opt drvCommon.JSONConversionOptions) (any, error) {
 	return scalar.Value(opt)
 }
 
@@ -154,13 +154,13 @@ func (scalar *scalarNode) String() (string, error) {
 // can choose its JSON representation without requiring a materialized parent
 // map or slice to rewrite the value.
 func (scalar *scalarNode) MarshalJSON() ([]byte, error) {
-	value, err := scalar.Value(drvCommon.JSONOptNumberAsString)
+	value, err := scalar.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 	if err != nil {
 		return nil, err
 	}
 
 	switch value := value.(type) {
-	case drvCommon.JSONNumber:
+	case json.Number:
 		return []byte(value), nil
 	case time.Time:
 		switch scalar.opcode {
@@ -190,7 +190,7 @@ func (scalar *scalarNode) MarshalJSON() ([]byte, error) {
 //
 // Errors:
 //   - unsupported scalar opcode or payload decode failure.
-func (scalar *scalarNode) Value(opts drvCommon.JSONOption) (any, error) {
+func (scalar *scalarNode) Value(opts drvCommon.JSONConversionOptions) (any, error) {
 	common.Odl.Debug("scalarNode.Value: begin", "offset", scalar.offset, "opcode", scalar.opcode, "options", opts)
 	value, err := _decodeScalarValue(scalar, opts)
 	if err != nil {
@@ -213,7 +213,7 @@ const (
 )
 
 // _decodeScalarValue decodes one scalar payload from its opcode.
-func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, error) {
+func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions) (any, error) {
 	offset := scalar.offset
 	opcode := scalar.opcode
 	buf := scalar.buf
@@ -386,8 +386,8 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, err
 		if err != nil {
 			return nil, err
 		}
-		if opts == drvCommon.JSONOptNumberAsString {
-			return drvCommon.JSONNumber(strconv.FormatFloat(float64(value), 'g', -1, 32)), nil
+		if opts.NumberMode == drvCommon.JSONNumberAsJSONNumber {
+			return json.Number(strconv.FormatFloat(float64(value), 'g', -1, 32)), nil
 		}
 
 		return float64(value), nil
@@ -406,8 +406,8 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, err
 		if err != nil {
 			return nil, err
 		}
-		if opts == drvCommon.JSONOptNumberAsString {
-			return drvCommon.JSONNumber(strconv.FormatFloat(value, 'g', -1, 64)), nil
+		if opts.NumberMode == drvCommon.JSONNumberAsJSONNumber {
+			return json.Number(strconv.FormatFloat(value, 'g', -1, 64)), nil
 		}
 		return value, nil
 
@@ -531,14 +531,14 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, err
 }
 
 // decodeOracleNumberValue decodes an Oracle NUMBER payload and preserves its
-// decimal text when JSONOptNumberAsString is requested.
-func decodeOracleNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONOption) (any, error) {
+// decimal text when JSONNumberAsJSONNumber is requested.
+func decodeOracleNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONConversionOptions) (any, error) {
 	text, err := converters.DecodeExactDecimalAsString(payload)
 	if err != nil {
 		return nil, err
 	}
-	if opts == drvCommon.JSONOptNumberAsString {
-		return drvCommon.JSONNumber(text), nil
+	if opts.NumberMode != drvCommon.JSONNumberAsFloat64 {
+		return json.Number(text), nil
 	}
 	value, err := strconv.ParseFloat(text, _jsonFloatBitSize)
 	if err != nil {
@@ -549,10 +549,10 @@ func decodeOracleNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONOptio
 }
 
 // decodeStringNumberValue decodes Oracle numbers that are represented as strings.
-func decodeStringNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONOption) (any, error) {
+func decodeStringNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONConversionOptions) (any, error) {
 	text := string(payload)
-	if opts == drvCommon.JSONOptNumberAsString {
-		return drvCommon.JSONNumber(text), nil
+	if opts.NumberMode != drvCommon.JSONNumberAsFloat64 {
+		return json.Number(text), nil
 	}
 	value, err := strconv.ParseFloat(text, _jsonFloatBitSize)
 	if err != nil {

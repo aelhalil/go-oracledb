@@ -39,6 +39,7 @@
 package oson
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"reflect"
@@ -329,7 +330,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to construct a scalar node from the valid test payload: %v", err)
 			}
-			got, err := node.Value(drvCommon.JSONOptDefault)
+			got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 			if err != nil {
 				t.Fatalf("failed to decode the valid scalar payload: %v", err)
 			}
@@ -339,7 +340,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 }
 
 // TestScalarNode_NumberAsStringOption verifies that numeric scalar opcodes honor
-// JSONOptNumberAsString by preserving their textual numeric representation.
+// JSONNumberAsJSONNumber by preserving their textual numeric representation.
 func TestScalarNode_NumberAsStringOption(t *testing.T) {
 	decimalNumberPayload, _ := converters.EncodeFloat(12.75)
 	arrayDecimalPayload, _ := converters.EncodeFloat(8.25)
@@ -353,47 +354,47 @@ func TestScalarNode_NumberAsStringOption(t *testing.T) {
 	tests := []struct {
 		name    string
 		payload drvCommon.B1Array
-		want    drvCommon.JSONNumber
+		want    json.Number
 	}{
 		{
 			name:    "compact oracle number",
 			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(decimalNumberPayload)-_compactNumberLengthBias))}, decimalNumberPayload...),
-			want:    drvCommon.JSONNumber("12.75"),
+			want:    json.Number("12.75"),
 		},
 		{
 			name:    "compact oracle array decimal",
 			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(arrayDecimalPayload)-_compactNumberLengthBias))}, arrayDecimalPayload...),
-			want:    drvCommon.JSONNumber("8.25"),
+			want:    json.Number("8.25"),
 		},
 		{
 			name:    "compact oracle decimal scale",
 			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(decimalScalePayload)-_compactNumberLengthBias))}, decimalScalePayload...),
-			want:    drvCommon.JSONNumber("12345.6789"),
+			want:    json.Number("12345.6789"),
 		},
 		{
 			name:    "compact oracle float64 scale",
 			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(float64ScalePayload)-_compactNumberLengthBias))}, float64ScalePayload...),
-			want:    drvCommon.JSONNumber("98765.125"),
+			want:    json.Number("98765.125"),
 		},
 		{
 			name:    "explicit oracle number",
 			payload: append(drvCommon.B1Array{osonOpOracleNumber, byte(drvCommon.UB1(len(largeIntegerPayload)))}, largeIntegerPayload...),
-			want:    drvCommon.JSONNumber("1234567890123456"),
+			want:    json.Number("1234567890123456"),
 		},
 		{
 			name:    "compact signed integer",
 			payload: append(drvCommon.B1Array{byte(osonOpCompactSigned32Prefix | drvCommon.UB1(len(compactIntegerPayload)))}, compactIntegerPayload...),
-			want:    drvCommon.JSONNumber("7"),
+			want:    json.Number("7"),
 		},
 		{
 			name:    "binary float",
 			payload: append(drvCommon.B1Array{osonOpBinaryFloat}, binaryFloatPayload...),
-			want:    drvCommon.JSONNumber("12.5"),
+			want:    json.Number("12.5"),
 		},
 		{
 			name:    "string number",
 			payload: append(drvCommon.B1Array{osonOpStringNumber, byte(drvCommon.UB1(len(stringNumberText)))}, drvCommon.B1Array(stringNumberText)...),
-			want:    drvCommon.JSONNumber("12.75"),
+			want:    json.Number("12.75"),
 		},
 	}
 
@@ -403,12 +404,12 @@ func TestScalarNode_NumberAsStringOption(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to construct a scalar node from the valid numeric payload: %v", err)
 			}
-			got, err := node.Value(drvCommon.JSONOptNumberAsString)
+			got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 			if err != nil {
-				t.Fatalf("failed to decode the numeric payload with JSONOptNumberAsString: %v", err)
+				t.Fatalf("failed to decode the numeric payload with JSONNumberAsJSONNumber: %v", err)
 			}
 			if got != tc.want {
-				t.Fatalf("expected Value(JSONOptNumberAsString) to return %#v, got %#v", tc.want, got)
+				t.Fatalf("expected Value(JSONNumberAsJSONNumber) to return %#v, got %#v", tc.want, got)
 			}
 		})
 	}
@@ -429,24 +430,24 @@ func TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat(t *testing.T) {
 		t.Fatalf("newScalarNodeAt() error = %v", err)
 	}
 
-	got, err := node.Value(drvCommon.JSONOptDefault)
+	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	if err != nil {
-		t.Fatalf("Value(JSONOptDefault) error = %v", err)
+		t.Fatalf("Value(JSONNumberAsFloat64) error = %v", err)
 	}
 	want, err := strconv.ParseFloat(text, 64)
 	if err != nil {
 		t.Fatalf("ParseFloat() error = %v", err)
 	}
 	if got != want {
-		t.Fatalf("Value(JSONOptDefault) = %#v, want %#v", got, want)
+		t.Fatalf("Value(JSONNumberAsFloat64) = %#v, want %#v", got, want)
 	}
 
-	gotString, err := node.Value(drvCommon.JSONOptNumberAsString)
+	gotString, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 	if err != nil {
-		t.Fatalf("Value(JSONOptNumberAsString) error = %v", err)
+		t.Fatalf("Value(JSONNumberAsJSONNumber) error = %v", err)
 	}
-	if gotString != drvCommon.JSONNumber(text) {
-		t.Fatalf("Value(JSONOptNumberAsString) = %#v, want JSONNumber(%q)", gotString, text)
+	if gotString != json.Number(text) {
+		t.Fatalf("Value(JSONNumberAsJSONNumber) = %#v, want json.Number(%q)", gotString, text)
 	}
 
 	gotText, err := node.String()
@@ -610,7 +611,7 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 				t.Fatalf("newScalarNodeAt() error = %v", err)
 			}
 
-			_, err = node.Value(drvCommon.JSONOptDefault)
+			_, err = node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 			if err == nil {
 				t.Fatal("Value() error = nil, want failure")
 			}
@@ -629,7 +630,7 @@ func TestScalarNode_IDReadsFullUB1Length(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newScalarNodeAt() error = %v", err)
 	}
-	got, err := node.Value(drvCommon.JSONOptDefault)
+	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	if err != nil {
 		t.Fatalf("Value() error = %v", err)
 	}
@@ -672,7 +673,7 @@ func TestScalarNode_BinaryFloatSpecialValue(t *testing.T) {
 		t.Fatalf("newScalarNodeAt() error = %v", err)
 	}
 
-	got, err := node.Value(drvCommon.JSONOptDefault)
+	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	if err != nil {
 		t.Fatalf("Value() error = %v", err)
 	}
@@ -688,7 +689,7 @@ func TestScalarNode_RejectsUnsupportedOpcode(t *testing.T) {
 		nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{0x7f})},
 		opcode:   0x7f,
 	}
-	if _, err := node.Value(drvCommon.JSONOptDefault); err == nil {
+	if _, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
 		t.Fatal("Value() error = nil, want unsupported-opcode failure")
 	}
 }
@@ -732,7 +733,7 @@ func TestScalarNode_RejectsTruncatedPayloads(t *testing.T) {
 				nodeBase: nodeBase{buf: newOsonBuffer(payload)},
 				opcode:   test.opcode,
 			}
-			if _, err := scalar.Value(drvCommon.JSONOptDefault); err == nil {
+			if _, err := scalar.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
 				t.Fatal("Value() error = nil, want truncated-payload failure")
 			}
 		})
@@ -748,7 +749,7 @@ func TestScalarNode_RejectsTruncatedPayloads(t *testing.T) {
 				nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{byte(opcode)})},
 				opcode:   opcode,
 			}
-			if _, err := scalar.Value(drvCommon.JSONOptDefault); err == nil {
+			if _, err := scalar.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
 				t.Fatalf("Value(%#x) error = nil, want truncated-length failure", opcode)
 			}
 		})
@@ -761,7 +762,7 @@ func TestScalarNode_RejectsTruncatedPayloads(t *testing.T) {
 		nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{osonOpStringNumber, 1, 'x'})},
 		opcode:   osonOpStringNumber,
 	}
-	if _, err := invalidNumber.Value(drvCommon.JSONOptDefault); err == nil {
+	if _, err := invalidNumber.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
 		t.Fatal("invalid string number error = nil, want parse failure")
 	}
 }

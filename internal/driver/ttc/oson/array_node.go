@@ -151,7 +151,7 @@ func (array *arrayNode) Kind() drvCommon.Kind {
 //
 // Errors:
 //   - child node construction or value decoding failure.
-func (array *arrayNode) GetValue(opts drvCommon.JSONOption) (any, error) {
+func (array *arrayNode) GetValue(opts drvCommon.JSONConversionOptions) (any, error) {
 	return array.Value(opts)
 }
 
@@ -248,7 +248,7 @@ func (array *arrayNode) Len() int {
 //
 // Errors:
 //   - child node construction or value decoding failure.
-func (array *arrayNode) Value(opts drvCommon.JSONOption) ([]any, error) {
+func (array *arrayNode) Value(opts drvCommon.JSONConversionOptions) ([]any, error) {
 	common.Odl.Debug("arrayNode.Value: begin", "offset", array.offset, "elements", len(array.childOffsets), "options", opts)
 	elementValues := make([]any, len(array.childOffsets))
 	for elementIndex := range array.childOffsets {

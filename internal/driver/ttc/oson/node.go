@@ -102,7 +102,7 @@ func Parse(data drvCommon.B1Array) (drvCommon.JSONNode, error) {
 //   - int, int8, int16, int32, and int64
 //   - uint, uint8, uint16, uint32, and uint64
 //   - float32 and float64
-//   - []byte, time.Time, JSONNumber, and json.Number
+//   - []byte, time.Time, and json.Number
 //
 // It returns KindArray for []any and KindObject for map[string]any.
 //
@@ -117,7 +117,6 @@ func classifyJSONValue(value any) (drvCommon.Kind, error) {
 		float32, float64,
 		[]byte,
 		time.Time,
-		drvCommon.JSONNumber,
 		stdjson.Number:
 		return drvCommon.KindScalar, nil
 	case []any:

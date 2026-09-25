@@ -36,98 +36,32 @@
 ** SOFTWARE.
  */
 
-// Package json binds and fetches values stored in the native Oracle Database
-// JSON type. Native JSON columns require Oracle Database 21c or later.
+// Package json binds and fetches Oracle Database native JSON values. Native
+// JSON columns require Oracle Database 21c or later.
 //
-// # Choosing how to bind JSON
+// # Binding
 //
-// Use [JSONString] when the value is already JSON text. JSONString validates the
-// complete document before it reaches the database:
+// [NewJSON] encodes supported Go values as OSON, Oracle's binary JSON format:
 //
-//	_, err := db.ExecContext(ctx,
-//		"insert into events (id, payload) values (:1, :2)",
-//		1,
-//		json.JSONString(`{"event":"created","attempt":1}`),
-//	)
+//	doc, err := json.NewJSON(map[string]any{"event": "created", "attempt": int64(1)})
 //
-// Use [JSON] with [JSON.Data] when the value is made of supported Go values.
-// The driver encodes Data directly as Oracle's binary JSON format, OSON:
+// The returned [JSON] implements [database/sql/driver.Valuer] and can be passed
+// directly to database/sql. Passing nil creates JSON null.
 //
-//	_, err := db.ExecContext(ctx,
-//		"insert into events (id, payload) values (:1, :2)",
-//		2,
-//		json.JSON{Data: map[string]any{
-//			"event":   "created",
-//			"attempt": int64(1),
-//		}},
-//	)
+// [JSONString] binds pre-serialized JSON text. It validates the text but cannot
+// represent OSON-native binary or temporal scalars.
 //
-// These bind forms are intentionally different. JSONString is convenient when
-// an application already has JSON text, but text cannot carry OSON-native
-// values such as a binary value or time.Time, etc. JSON.Data supports those values
-// and there are preserved during when fetched from the database.
+// # Fetching
 //
-// JSON.Data accepts only the concrete types documented on that field. It does
-// not apply encoding/json marshaling to arbitrary structs, pointers, typed maps,
-// typed slices, json.RawMessage, or user-defined aliases. Convert such a value
-// to map[string]any, []any, or JSONString before binding it.
+// Scan a JSON column into [JSON], then read it with [JSON.GetValue] or the
+// lazy accessors [JSON.AsJSONObject], [JSON.AsJSONArray], and
+// [JSON.AsJSONScalar]. Use sql.Null[JSON] for nullable columns.
 //
-// # Binding and fetching use different JSON states
+// # Options
 //
-// A JSON value constructed with Data is a bind value. A JSON value populated by
-// database/sql.Scan contains a parsed OSON node instead. If a JSON value has a
-// parsed node, that fetched value takes precedence: [JSON.Value] and
-// [JSON.String] ignore Data. Consequently, do not scan into a JSON value and
-// then assign its Data field to replace the document. Construct a new JSON
-// value for the new bind. A fetched JSON value can itself be rebound when the
-// same document should be sent again (or its descendants).
-//
-// Fetch a non-NULL JSON column into *JSON:
-//
-//	var doc json.JSON
-//	err := db.QueryRowContext(ctx,
-//		"select payload from events where id = :1", 1,
-//	).Scan(&doc)
-//	if err != nil {
-//		return err
-//	}
-//
-// For a nullable column, use sql.Null[JSON]. Scanning SQL NULL directly into
-// *JSON is not supported:
-//
-//	var doc sql.Null[json.JSON]
-//	err := db.QueryRowContext(ctx, query, id).Scan(&doc)
-//	if err != nil {
-//		return err
-//	}
-//	if !doc.Valid {
-//		// The database value was SQL NULL.
-//	}
-//
-// SQL NULL and the JSON value null are different. SQL NULL makes the Null value
-// invalid; a JSON null is a valid JSON document whose materialized Go value is
-// nil.
-//
-// # Reading a fetched value
-//
-// [JSON.GetValue] materializes a complete document as ordinary Go values.
-// Objects become map[string]any, arrays become []any, and scalars become their
-// corresponding Go values. Number handling is selected for the whole subtree:
-//
-//   - [JSONOptDefault] returns numbers as float64. This is familiar and
-//     convenient, but large integers and exact decimals can be rounded.
-//   - [JSONOptNumberAsString] returns numbers as [Number], preserving their
-//     decimal text.
-//
-// Use [JSON.Kind] and the object, array, or scalar wrapper when only part of a
-// large document is needed. The wrappers navigate the encoded document lazily,
-// meaning that they read only the metadata and offsets needed to locate a
-// value; child values remain encoded until they are requested. GetValue then
-// materializes the selected subtree, while String renders it as JSON text.
-// String provides display text with diagnostic markers on rendering failure.
-// Materialization options are supplied to GetValue. When navigating to a child
-// JSON value, obtain its wrapper first and supply the desired option when
-// materializing that child.
+// [Options] controls number materialization and time.Time encoding. Set options
+// with [NewJSONWithOptions] or [JSON.SetOptions]; they propagate to all lazy
+// views. Use [JoinOptions] to combine independently selected options.
 package json
 
 import (
@@ -140,32 +74,6 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/oson"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
-
-// JSONOption controls how numbers are represented when a fetched JSON or one of
-// its subtrees is materialized as Go values. An option applies recursively to
-// every number in that materialized value.
-type JSONOption = drvCommon.JSONOption
-
-const (
-	// JSONOptDefault materializes JSON numbers as float64, matching the default
-	// behavior of encoding/json when decoding into any. A float64 cannot exactly
-	// represent every JSON integer or decimal; use JSONOptNumberAsString when
-	// exact decimal digits matter.
-	JSONOptDefault JSONOption = drvCommon.JSONOptDefault
-	// JSONOptNumberAsString materializes JSON numbers as [Number], preserving
-	// their decimal text instead of first converting them to float64. Number is
-	// still marshaled as a JSON number, not as a quoted JSON string.
-	JSONOptNumberAsString JSONOption = drvCommon.JSONOptNumberAsString
-)
-
-// Number contains the decimal text of a JSON number without float64 rounding.
-// It is analogous to encoding/json.Number and is marshaled as an unquoted JSON
-// number even though its Go representation is string-backed.
-//
-// When used as bind input, Number must contain exactly one valid JSON number
-// token with no surrounding whitespace. Invalid text causes [JSON.Value] to
-// return an OSON encoding error.
-type Number = drvCommon.JSONNumber
 
 // JSONKind identifies whether the root of a fetched JSON value is an object, an
 // array, or a scalar. JSON null is a scalar.
@@ -180,13 +88,8 @@ const (
 	JSONScalarKind JSONKind = drvCommon.KindScalar
 )
 
-// JSONString is validated JSON text used as a database bind value.
-//
-// Use JSONString for a complete document that is already serialized. It must
-// contain valid JSON; invalid text is rejected before execution. Do not use
-// JSONString for plain application strings that should become JSON string
-// scalars: use JSON{Data: value} so the driver applies the required JSON
-// quoting.
+// JSONString is validated JSON text used as a database bind value. It cannot
+// represent OSON-native binary or temporal scalars; use [NewJSON] for those.
 type JSONString string
 
 // Value implements driver.Valuer.
@@ -201,39 +104,71 @@ func (jz JSONString) Value() (driver.Value, error) {
 	return string(jz), nil
 }
 
-// JSON is both the bind container for supported Go values and the scan target
-// for a native Oracle Database JSON value.
-//
-// Construct a new JSON and set [JSON.Data] when binding a Go value. Scan a
-// database JSON column into *JSON when fetching. These are separate states: a
-// parsed value populated by Scan takes precedence over Data in Value and
-// String. The zero JSON value binds and renders as the JSON value null, but it
-// has no parsed node and therefore cannot be inspected with Kind, GetValue, or
-// the shape-specific accessors until populated by Scan.
-type JSON struct {
-	// node provides access to the underlying JSON representation.
-	node drvCommon.JSONNode
-	// Data is the Go value to encode as OSON for a JSON bind. The supported
-	// concrete types are:
-	//   - nil, bool, string, int, int8, int16, int32, int64, uint, uint8,
-	//     uint16, uint32, uint64, float32, float64, []byte, and time.Time
-	//   - Number and encoding/json.Number containing valid JSON number text
-	//   - map[string]any and []any, whose values recursively use these types
-	//
-	// The types are matched exactly. Structs, pointers, json.RawMessage,
-	// user-defined aliases, typed maps such as map[string]string, and typed slices
-	// such as []string are not supported. Convert them to one of the concrete
-	// types above or bind already-serialized text with JSONString.
-	//
-	// []byte is encoded as an OSON binary scalar, not parsed as JSON text.
-	//
-	// Data is used only when this JSON has not been populated by Scan. Once Scan
-	// has installed a parsed OSON node, that node is authoritative and Data is
-	// ignored by Value and String. Use a new JSON value to bind replacement data.
-	Data any
+// NewJSONFromString validates value as JSON text and returns it as a
+// [JSONString] for binding. It rejects empty, whitespace-only, and malformed
+// input. Use this for eager validation; [JSONString] defers validation to the
+// bind boundary.
+func NewJSONFromString(value string) (JSONString, error) {
+	common.Odl.Debug("NewJSONFromString: start", "length", len(value))
+	if !json.Valid([]byte(value)) {
+		cause := fmt.Errorf("input is not valid JSON text")
+		common.Odl.Debug("NewJSONFromString: failed", "error", cause)
+		return "", common.NewOracleError(oracleErrors.OsonEncodingError, cause)
+	}
+	common.Odl.Debug("NewJSONFromString: completed", "length", len(value))
+	return JSONString(value), nil
 }
 
-// Scan implements sql.Scanner.
+// JSON is an OSON-encoded JSON document that can be bound and scanned through
+// database/sql.
+//
+// Construct a JSON with [NewJSON] or [NewJSONWithOptions], or scan one from a
+// native Oracle JSON column. A successfully constructed or scanned JSON can be
+// rebound without re-encoding.
+//
+// The zero JSON is uninitialized, not JSON null. Accessors return an error
+// until NewJSON or Scan provides a document.
+type JSON struct {
+	node     drvCommon.JSONNode
+	document []byte
+	options  Options
+}
+
+// NewJSON encodes value as an OSON document using default options. Passing nil
+// creates JSON null.
+func NewJSON(value any) (JSON, error) {
+	return NewJSONWithOptions(value, Options{})
+}
+
+// NewJSONWithOptions encodes value as an OSON document using opts. Time options
+// select the OSON scalar used for time.Time values; number options control
+// future GetValue calls.
+func NewJSONWithOptions(value any, opts Options) (JSON, error) {
+	document, err := oson.EncodeWithOptions(value, opts.conversion)
+	if err != nil {
+		return JSON{}, err
+	}
+	node, err := oson.Parse(document)
+	if err != nil {
+		return JSON{}, err
+	}
+	return JSON{node: node, document: document, options: opts}, nil
+}
+
+// SetOptions replaces the options associated with jz. It returns an error for a
+// nil receiver.
+func (jz *JSON) SetOptions(opts Options) error {
+	if jz == nil {
+		cause := fmt.Errorf("cannot set JSON options on a nil *JSON receiver")
+		return common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "SetOptions")
+	}
+	jz.options = opts
+	return nil
+}
+
+// Scan implements sql.Scanner for a native Oracle JSON column. On success it
+// replaces jz's document and preserves its options. Scan returns an error for
+// SQL NULL; use sql.Null[JSON] for nullable columns.
 func (jz *JSON) Scan(src any) error {
 	common.Odl.Debug("JSON.Scan: start", "source_type", fmt.Sprintf("%T", src))
 	if jz == nil {
@@ -253,7 +188,8 @@ func (jz *JSON) Scan(src any) error {
 				common.Odl.Debug("JSON.Scan: failed", "error", err, "length", len(value))
 				return err
 			}
-			*jz = JSON{node: node}
+			jz.node = node
+			jz.document = doc
 			common.Odl.Debug("JSON.Scan: completed", "length", len(value))
 			return nil
 		}
@@ -267,28 +203,28 @@ func (jz *JSON) Scan(src any) error {
 	}
 }
 
-// Value implements driver.Valuer.
+// Value implements driver.Valuer. It returns the encoded OSON document for
+// binding, or an error if jz is uninitialized. Child views are materialized
+// and re-encoded using their current options, which may convert scalar values.
 func (jz JSON) Value() (driver.Value, error) {
-	common.Odl.Debug("JSON.Value: start", "data_type", fmt.Sprintf("%T", jz.Data), "has_node", jz.node != nil)
-	data := jz.Data
-
-	if jz.node != nil {
-		var err error
-		data, err = jz.node.GetValue(drvCommon.JSONOptNumberAsString)
-		if err != nil {
-			common.Odl.Debug("JSON.Value: failed", "error", err)
-			return nil, err
-		}
+	if jz.node == nil {
+		cause := fmt.Errorf("JSON has no OSON document to bind")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "Value")
+	}
+	if jz.document != nil {
+		return append([]byte(nil), jz.document...), nil
 	}
 
-	doc, err := oson.Encode(data)
+	common.Odl.Debug("JSON.Value: encoding child view", "options", jz.options.conversion)
+	value, err := jz.node.GetValue(jz.options.conversion)
 	if err != nil {
-		common.Odl.Debug("JSON.Value: failed", "error", err)
 		return nil, err
 	}
-
-	common.Odl.Debug("JSON.Value: completed", "length", len(doc))
-	return []byte(doc), nil
+	document, err := oson.EncodeWithOptions(value, jz.options.conversion)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(document), nil
 }
 
 // Kind reports whether the root of a fetched JSON value is JSONObjectKind,
@@ -315,7 +251,7 @@ func (jz JSON) AsJSONObject() (JSONObject, error) {
 	}
 
 	if obj, ok := jz.node.(drvCommon.JSONObjectNode); ok {
-		return JSONObject{node: obj}, nil
+		return JSONObject{node: obj, options: jz.options}, nil
 	}
 	cause := fmt.Errorf("JSON node of type %T reports object kind but does not implement JSONObjectNode", jz.node)
 	return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "object")
@@ -334,7 +270,7 @@ func (jz JSON) AsJSONArray() (JSONArray, error) {
 	}
 
 	if arr, ok := jz.node.(drvCommon.JSONArrayNode); ok {
-		return JSONArray{node: arr}, nil
+		return JSONArray{node: arr, options: jz.options}, nil
 	}
 	cause := fmt.Errorf("JSON node of type %T reports array kind but does not implement JSONArrayNode", jz.node)
 	return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "array")
@@ -353,35 +289,25 @@ func (jz JSON) AsJSONScalar() (JSONScalar, error) {
 		return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "scalar")
 	}
 	if scalar, ok := jz.node.(drvCommon.JSONScalarNode); ok {
-		return JSONScalar{node: scalar}, nil
+		return JSONScalar{node: scalar, options: jz.options}, nil
 	}
 	cause := fmt.Errorf("JSON node of type %T reports scalar kind but does not implement JSONScalarNode", jz.node)
 	return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "scalar")
 }
 
-// GetValue materializes an entire fetched JSON document as Go values, applying
-// opts recursively. Objects become map[string]any, arrays become []any, and
-// scalars become their corresponding Go values. It returns an error when jz has
-// not been populated by Scan.
-func (jz JSON) GetValue(opts JSONOption) (any, error) {
+// GetValue materializes the complete document as Go values using jz's stored
+// [Options]. Objects become map[string]any, arrays become []any, and scalars
+// become their corresponding Go values.
+func (jz JSON) GetValue() (any, error) {
 	if jz.node == nil {
 		cause := fmt.Errorf("JSON has no parsed OSON node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return jz.node.GetValue(opts)
+	return jz.node.GetValue(jz.options.conversion)
 }
 
-// String implements fmt.Stringer, returning JSON text for display.
-// It returns "<JSON: rendering failed>" if rendering fails.
-//
-// For a fetched JSON, String renders the parsed OSON value and ignores Data. For
-// a caller-constructed JSON, it marshals Data with encoding/json. String is
-// therefore not a preview of OSON-native bind semantics: for example,
-// encoding/json renders []byte as a base64 string, while Value encodes it as a
-// binary scalar. String can also succeed for a Go type that Value does not
-// support, or fail for an OSON value such as a non-finite float that Value does
-// support. Use a successful Value or database execution to validate bind input.
-// The zero JSON value renders as "null".
+// String returns JSON text for diagnostics. It returns "<JSON: uninitialized>"
+// for the zero value and "<JSON: rendering failed>" if rendering fails.
 func (jz JSON) String() string {
 	if jz.node != nil {
 		text, err := jz.node.String()
@@ -391,29 +317,24 @@ func (jz JSON) String() string {
 		return text
 	}
 
-	text, err := json.Marshal(jz.Data)
-	if err != nil {
-		return "<JSON: rendering failed>"
-	}
-	return string(text)
+	return "<JSON: uninitialized>"
 }
 
-// JSONObject is a lazy view of an object in a fetched OSON document. Obtain one
-// with [JSON.AsJSONObject]. Supply the materialization option to GetValue;
-// String is independent of that option.
+// JSONObject is a lazy view of an object in a fetched JSON document. Obtain one
+// with [JSON.AsJSONObject].
 type JSONObject struct {
 	// node provides access to the underlying JSON object representation.
-	node drvCommon.JSONObjectNode
+	node    drvCommon.JSONObjectNode
+	options Options
 }
 
-// GetValue materializes the complete object subtree as map[string]any using
-// opts recursively.
-func (obj JSONObject) GetValue(opts JSONOption) (map[string]any, error) {
+// GetValue materializes the object subtree as map[string]any.
+func (obj JSONObject) GetValue() (map[string]any, error) {
 	if obj.node == nil {
 		cause := fmt.Errorf("JSONObject has no underlying object node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return obj.node.Value(opts)
+	return obj.node.Value(obj.options.conversion)
 }
 
 // Keys returns the names of the object's members. Their order is unspecified.
@@ -425,28 +346,15 @@ func (obj JSONObject) Keys() []string {
 	return obj.node.Keys()
 }
 
-// Contains reports whether key exists in the object. It returns false for an
-// absent key and for the zero uninitialized JSONObject.
-func (obj JSONObject) Contains(key string) bool {
-	if obj.node != nil {
-		_, ok := obj.node.Get(key)
-		return ok
-	}
-
-	return false
-}
-
-// Get returns a lazy child JSON value and true when key exists. It returns a
-// zero JSON and false when the key is absent or obj is uninitialized.
-//
-// Supply the desired option when materializing the returned JSON.
+// Get returns a lazy child JSON for key and true if it exists, or a zero JSON
+// and false otherwise.
 func (obj JSONObject) Get(key string) (JSON, bool) {
 	if obj.node != nil {
 		node, ok := obj.node.Get(key)
 		if !ok {
 			return JSON{}, false
 		}
-		return JSON{node: node}, true
+		return JSON{node: node, options: obj.options}, true
 	}
 	return JSON{}, false
 }
@@ -465,12 +373,12 @@ func (obj JSONObject) String() string {
 	return text
 }
 
-// JSONArray is a lazy view of an array in a fetched OSON document. Obtain one
-// with [JSON.AsJSONArray]. Supply the materialization option to GetValue;
-// String is independent of that option.
+// JSONArray is a lazy view of an array in a fetched JSON document. Obtain one
+// with [JSON.AsJSONArray].
 type JSONArray struct {
 	// node provides access to the underlying JSON array representation.
-	node drvCommon.JSONArrayNode
+	node    drvCommon.JSONArrayNode
+	options Options
 }
 
 // Len returns the number of elements in the JSON array, or -1 if arr is the zero
@@ -482,20 +390,17 @@ func (arr JSONArray) Len() int {
 	return arr.node.Len()
 }
 
-// GetValue materializes the complete array subtree as []any, preserving element
-// order, using opts recursively.
-func (arr JSONArray) GetValue(opts JSONOption) ([]any, error) {
+// GetValue materializes the array subtree as []any.
+func (arr JSONArray) GetValue() ([]any, error) {
 	if arr.node == nil {
 		cause := fmt.Errorf("JSONArray has no underlying array node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return arr.node.Value(opts)
+	return arr.node.Value(arr.options.conversion)
 }
 
-// Get returns the lazy child JSON value at zero-based index i. It returns an
-// error when arr is uninitialized or i is outside [0, Len()).
-//
-// Supply the desired option when materializing the returned JSON.
+// Get returns the lazy child JSON at index i. It returns an error if i is
+// outside [0, Len()).
 func (arr JSONArray) Get(i int) (JSON, error) {
 	if arr.node == nil {
 		cause := fmt.Errorf("JSONArray has no underlying array node to index")
@@ -507,7 +412,7 @@ func (arr JSONArray) Get(i int) (JSON, error) {
 		cause := fmt.Errorf("array index %d is outside the valid range [0,%d)", i, arr.node.Len())
 		return JSON{}, common.NewOracleError(oracleErrors.JSONArrayIndexOutOfRangeError, cause, i)
 	}
-	return JSON{node: node}, nil
+	return JSON{node: node, options: arr.options}, nil
 }
 
 // String implements fmt.Stringer, returning JSON text for display.
@@ -524,22 +429,22 @@ func (arr JSONArray) String() string {
 	return text
 }
 
-// JSONScalar is a lazy view of a scalar in a fetched OSON document. Scalars
-// include JSON null, booleans, strings, numbers, and OSON-native date, timestamp,
-// interval, and binary values. Obtain one with [JSON.AsJSONScalar].
+// JSONScalar is a lazy view of a scalar in a fetched JSON document. Scalars
+// include JSON null, booleans, strings, numbers, and OSON-native date,
+// timestamp, interval, and binary values. Obtain one with [JSON.AsJSONScalar].
 type JSONScalar struct {
 	// node provides access to the underlying JSON scalar representation.
-	node drvCommon.JSONScalarNode
+	node    drvCommon.JSONScalarNode
+	options Options
 }
 
-// GetValue materializes the scalar as its corresponding Go value, using opts
-// for a number.
-func (scalar JSONScalar) GetValue(opts JSONOption) (any, error) {
+// GetValue materializes the scalar as its corresponding Go value.
+func (scalar JSONScalar) GetValue() (any, error) {
 	if scalar.node == nil {
 		cause := fmt.Errorf("JSONScalar has no underlying scalar node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return scalar.node.Value(opts)
+	return scalar.node.Value(scalar.options.conversion)
 }
 
 // String implements fmt.Stringer, returning JSON text for display.

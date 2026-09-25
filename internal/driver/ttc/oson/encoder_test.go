@@ -40,6 +40,7 @@ package oson
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
@@ -203,6 +204,21 @@ func TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2(t *testing.
 	assertEncodedValueDecodesTo(t, doc, value)
 }
 
+// TestEncodeRejectsOSONOver32MiB verifies the client rejects an OSON document
+// larger than the native JSON 32 MiB size limit before sending it to the database.
+func TestEncodeRejectsOSONOver32MiB(t *testing.T) {
+	const valueLength = osonMaxDocumentSize - osonHeaderMinSize - osonUB4Size - osonScalarHeaderSizeUB4 + 1
+
+	_, err := Encode(strings.Repeat("x", valueLength))
+	if err == nil {
+		t.Fatal("Encode() error = nil, want OSON maximum-size error")
+	}
+	assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
+	if !strings.Contains(err.Error(), "exceeds maximum size") {
+		t.Fatalf("Encode() error = %q, want maximum-size detail", err)
+	}
+}
+
 // TestEncodeContainers_EncodesNestedObjectAndArray expects encoding to preserve nested
 // objects, arrays, and their values when the document is decoded.
 func TestEncodeContainers_EncodesNestedObjectAndArray(t *testing.T) {
@@ -328,14 +344,14 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 		{name: "null", value: nil, want: nil, wantOp: osonOpNull},
 		{name: "true", value: true, want: true, wantOp: osonOpTrue},
 		{name: "false", value: false, want: false, wantOp: osonOpFalse},
-		{name: "int8 uses payload-selected opcode", value: int8(-42), want: drvCommon.JSONNumber("-42"), wantOp: signedIntegerOpcode(t, int64(-42)), numberOpt: true},
-		{name: "int32 uses payload-selected opcode", value: int32(-1 << 31), want: drvCommon.JSONNumber("-2147483648"), wantOp: signedIntegerOpcode(t, int64(-1<<31)), numberOpt: true},
-		{name: "int64 uses payload-selected opcode", value: int64(-1 << 40), want: drvCommon.JSONNumber("-1099511627776"), wantOp: signedIntegerOpcode(t, int64(-1<<40)), numberOpt: true},
-		{name: "int64 minimum uses payload-selected opcode", value: int64(-1 << 63), want: drvCommon.JSONNumber("-9223372036854775808"), wantOp: signedIntegerOpcode(t, -1<<63), numberOpt: true},
-		{name: "uint64 uses oracle number", value: uint64(1 << 40), want: drvCommon.JSONNumber("1099511627776"), wantOp: unsignedOracleNumberOpcode(t, uint64(1<<40)), numberOpt: true},
-		{name: "float32 uses binary float", value: float32(12.25), want: drvCommon.JSONNumber("12.25"), wantOp: osonOpBinaryFloat, numberOpt: true},
-		{name: "float64 uses binary double", value: float64(123.5), want: drvCommon.JSONNumber("123.5"), wantOp: osonOpBinaryDouble, numberOpt: true},
-		{name: "string number preserves text", value: drvCommon.JSONNumber("9876543210.25"), want: drvCommon.JSONNumber("9876543210.25"), wantOp: osonOpStringNumber, numberOpt: true},
+		{name: "int8 uses payload-selected opcode", value: int8(-42), want: json.Number("-42"), wantOp: signedIntegerOpcode(t, int64(-42)), numberOpt: true},
+		{name: "int32 uses payload-selected opcode", value: int32(-1 << 31), want: json.Number("-2147483648"), wantOp: signedIntegerOpcode(t, int64(-1<<31)), numberOpt: true},
+		{name: "int64 uses payload-selected opcode", value: int64(-1 << 40), want: json.Number("-1099511627776"), wantOp: signedIntegerOpcode(t, int64(-1<<40)), numberOpt: true},
+		{name: "int64 minimum uses payload-selected opcode", value: int64(-1 << 63), want: json.Number("-9223372036854775808"), wantOp: signedIntegerOpcode(t, -1<<63), numberOpt: true},
+		{name: "uint64 uses oracle number", value: uint64(1 << 40), want: json.Number("1099511627776"), wantOp: unsignedOracleNumberOpcode(t, uint64(1<<40)), numberOpt: true},
+		{name: "float32 uses binary float", value: float32(12.25), want: json.Number("12.25"), wantOp: osonOpBinaryFloat, numberOpt: true},
+		{name: "float64 uses binary double", value: float64(123.5), want: json.Number("123.5"), wantOp: osonOpBinaryDouble, numberOpt: true},
+		{name: "string number preserves text", value: json.Number("9876543210.25"), want: json.Number("9876543210.25"), wantOp: osonOpStringNumber, numberOpt: true},
 	}
 
 	for _, tt := range tests {
@@ -347,11 +363,11 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 			if got := encodedRootOpcode(t, doc); got != tt.wantOp {
 				t.Fatalf("root opcode = 0x%02x, want 0x%02x", got, tt.wantOp)
 			}
-			assertEncodedValueDecodesTo(t, doc, tt.want, func() drvCommon.JSONOption {
+			assertEncodedValueDecodesTo(t, doc, tt.want, func() drvCommon.JSONConversionOptions {
 				if tt.numberOpt {
-					return drvCommon.JSONOptNumberAsString
+					return drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber}
 				}
-				return drvCommon.JSONOptDefault
+				return drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}
 			}())
 		})
 	}
@@ -363,7 +379,7 @@ func TestEncodeScalarValues_SupportsEveryIntegerType(t *testing.T) {
 	tests := []struct {
 		name       string
 		value      any
-		want       drvCommon.JSONNumber
+		want       json.Number
 		opcodeMask drvCommon.UB1
 	}{
 		{name: "int", value: int(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
@@ -387,7 +403,7 @@ func TestEncodeScalarValues_SupportsEveryIntegerType(t *testing.T) {
 			if got := encodedRootOpcode(t, doc); got&^0x0f != tt.opcodeMask {
 				t.Fatalf("root opcode = 0x%02x, want family 0x%02x", got, tt.opcodeMask)
 			}
-			assertEncodedValueDecodesTo(t, doc, tt.want, drvCommon.JSONOptNumberAsString)
+			assertEncodedValueDecodesTo(t, doc, tt.want, drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 		})
 	}
 }
@@ -423,7 +439,7 @@ func TestEncodeUnsignedInteger_UsesExplicitOracleNumber(t *testing.T) {
 	if got := doc[offset+2 : offset+2+len(payload)]; !reflect.DeepEqual(got, payload) {
 		t.Fatalf("payload = %x, want %x", got, payload)
 	}
-	assertEncodedValueDecodesTo(t, doc, drvCommon.JSONNumber(strconv.FormatUint(value, 10)), drvCommon.JSONOptNumberAsString)
+	assertEncodedValueDecodesTo(t, doc, json.Number(strconv.FormatUint(value, 10)), drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 }
 
 // TestEncodeContainers_UsesUB2FieldIDs expects encoding to widen dictionary counts and
@@ -617,7 +633,7 @@ func TestEncodeTimestampScalar_UsesTimestampPayload(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse() error = %v", err)
 			}
-			value, err := node.GetValue(drvCommon.JSONOptDefault)
+			value, err := node.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 			if err != nil {
 				t.Fatalf("GetValue() error = %v", err)
 			}
@@ -705,14 +721,14 @@ func TestEncodeInvalidValues_ReturnOsonEncodingError(t *testing.T) {
 		{name: "unsupported array child", value: []any{"ok", struct{}{}}},
 		{name: "unsupported nested object child", value: map[string]any{"nested": map[string]any{"bad": struct{}{}}}},
 		{name: "unsupported nested array child", value: []any{[]any{struct{}{}}}},
-		{name: "invalid scalar text", value: drvCommon.JSONNumber("not-a-number")},
-		{name: "boolean is not a number", value: drvCommon.JSONNumber("true")},
-		{name: "null is not a number", value: drvCommon.JSONNumber("null")},
-		{name: "string is not a number", value: drvCommon.JSONNumber(`"text"`)},
-		{name: "array is not a number", value: drvCommon.JSONNumber("[]")},
-		{name: "object is not a number", value: drvCommon.JSONNumber("{}")},
-		{name: "nan scalar text", value: drvCommon.JSONNumber("NaN")},
-		{name: "infinity scalar text", value: drvCommon.JSONNumber("+Inf")},
+		{name: "invalid scalar text", value: json.Number("not-a-number")},
+		{name: "boolean is not a number", value: json.Number("true")},
+		{name: "null is not a number", value: json.Number("null")},
+		{name: "string is not a number", value: json.Number(`"text"`)},
+		{name: "array is not a number", value: json.Number("[]")},
+		{name: "object is not a number", value: json.Number("{}")},
+		{name: "nan scalar text", value: json.Number("NaN")},
+		{name: "infinity scalar text", value: json.Number("+Inf")},
 		{name: "field name too long", value: map[string]any{strings.Repeat("x", osonMaxSecondaryDictKeyLength+1): "value"}},
 	}
 
@@ -877,10 +893,10 @@ func assertEncodeOsonError(t *testing.T, value any) {
 }
 
 // assertEncodedValueDecodesTo checks decoded output with an optional JSON option.
-func assertEncodedValueDecodesTo(t *testing.T, doc drvCommon.B1Array, want any, opt ...drvCommon.JSONOption) {
+func assertEncodedValueDecodesTo(t *testing.T, doc drvCommon.B1Array, want any, opt ...drvCommon.JSONConversionOptions) {
 	t.Helper()
 
-	useOpt := drvCommon.JSONOptDefault
+	useOpt := drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}
 	if len(opt) > 0 {
 		useOpt = opt[0]
 	}

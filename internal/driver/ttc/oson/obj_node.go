@@ -338,7 +338,7 @@ func (obj *objectNode) Kind() drvCommon.Kind {
 //
 // Errors:
 //   - child node construction or value decoding failure.
-func (obj *objectNode) GetValue(opts drvCommon.JSONOption) (any, error) {
+func (obj *objectNode) GetValue(opts drvCommon.JSONConversionOptions) (any, error) {
 	return obj.Value(opts)
 }
 
@@ -453,7 +453,7 @@ func (obj *objectNode) Keys() []string {
 //
 // Errors:
 //   - child node construction or value decoding failure.
-func (obj *objectNode) Value(opts drvCommon.JSONOption) (map[string]any, error) {
+func (obj *objectNode) Value(opts drvCommon.JSONConversionOptions) (map[string]any, error) {
 	common.Odl.Debug("objectNode.Value: begin", "offset", obj.offset, "members", len(obj.childrenOffsets), "options", opts)
 	values := make(map[string]any, len(obj.childrenOffsets))
 	for fieldName, offset := range obj.childrenOffsets {

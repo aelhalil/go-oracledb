@@ -55,6 +55,20 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestOptionsComposition", Categories: "unitary", Exclusive: false, Fn: TestOptionsComposition},
+	{Name: "TestOptionsDefaultOverride", Categories: "unitary", Exclusive: false, Fn: TestOptionsDefaultOverride},
+	{Name: "TestJSONStringValue", Categories: "unitary", Exclusive: false, Fn: TestJSONStringValue},
+	{Name: "TestNewJSONFromString", Categories: "unitary", Exclusive: false, Fn: TestNewJSONFromString},
+	{Name: "TestJSONNilContainers", Categories: "unitary", Exclusive: false, Fn: TestJSONNilValues},
+	{Name: "TestJSONScanRejectsInvalidSources", Categories: "unitary", Exclusive: false, Fn: TestJSONScanRejectsInvalidSources},
+	{Name: "TestJSONNilReceiver", Categories: "unitary", Exclusive: false, Fn: TestJSONNilReceiver},
+	{Name: "TestNewJSONWithOptionsRejectsUnsupportedValue", Categories: "unitary", Exclusive: false, Fn: TestNewJSONWithOptionsRejectsUnsupportedValue},
+	{Name: "TestJSONSetOptionsSurvivesScan", Categories: "unitary", Exclusive: false, Fn: TestJSONSetOptionsSurvivesScan},
+	{Name: "TestJSONChildValueUsesInheritedOptions", Categories: "unitary", Exclusive: false, Fn: TestJSONChildValueUsesInheritedOptions},
+	{Name: "TestJSONZeroValues", Categories: "unitary", Exclusive: false, Fn: TestJSONZeroValues},
+	{Name: "TestJSONObjectAccessors", Categories: "unitary", Exclusive: false, Fn: TestJSONObjectAccessors},
+	{Name: "TestJSONArrayAccessors", Categories: "unitary", Exclusive: false, Fn: TestJSONArrayAccessors},
+	{Name: "TestJSONScalarAccessors", Categories: "unitary", Exclusive: false, Fn: TestJSONScalarAccessors},
 	{Name: "TestJSONScanCopiesSourceBytes", Categories: "unitary", Exclusive: false, Fn: TestJSONScanCopiesSourceBytes},
 }
 

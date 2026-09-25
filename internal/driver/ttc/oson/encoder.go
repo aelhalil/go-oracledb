@@ -63,7 +63,7 @@ const (
 //
 // Input:
 //   - nil, bool, string, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64,
-//     float32, float64, []byte, time.Time, drvCommon.JSONNumber, json.Number, map[string]any, []any.
+//     float32, float64, []byte, time.Time, json.Number, map[string]any, []any.
 //
 // Output:
 // - drvCommon.B1Array containing the encoded OSON document.
@@ -71,14 +71,25 @@ const (
 // Errors:
 // - common.OsonEncodingError for an unsupported value or an OSON encoding/size limit failure.
 func Encode(value any) (drvCommon.B1Array, error) {
+	return EncodeWithOptions(value, drvCommon.JSONConversionOptions{})
+}
+
+// EncodeWithOptions converts a supported Go value to OSON using opts.
+func EncodeWithOptions(value any, opts drvCommon.JSONConversionOptions) (drvCommon.B1Array, error) {
 	inputType := fmt.Sprintf("%T", value)
 	common.Odl.Debug("oson.Encode: begin", "inputType", inputType)
 
 	enc := newOsonEncoder()
+	enc.options = opts
 	doc, err := enc.encode(value)
 	if err != nil {
 		common.Odl.Debug("oson.Encode: failed", "error", err, "inputType", inputType)
 		return nil, err
+	}
+	if len(doc) > osonMaxDocumentSize {
+		cause := fmt.Errorf("OSON document size %d exceeds maximum size %d bytes", len(doc), osonMaxDocumentSize)
+		common.Odl.Error("oson.Encode: failed", "error", cause, "inputType", inputType, "documentBytes", len(doc))
+		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
 	common.Odl.Debug("oson.Encode: completed",
@@ -94,6 +105,7 @@ func Encode(value any) (drvCommon.B1Array, error) {
 
 // osonEncoder keeps the state needed to build one OSON document.
 type osonEncoder struct {
+	options drvCommon.JSONConversionOptions
 	// Field-name dictionary for this document.
 	dict fieldNameDictionary
 
@@ -582,9 +594,7 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 	case []byte:
 		return enc.writeBinary(tree, drvCommon.B1Array(v))
 	case time.Time:
-		return enc.writeTimestamp(tree, v)
-	case drvCommon.JSONNumber:
-		return enc.writeStringNumber(tree, string(v))
+		return enc.writeTime(tree, v)
 	case stdjson.Number:
 		return enc.writeStringNumber(tree, v.String())
 	default:
@@ -592,6 +602,29 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 		common.Odl.Debug("osonEncoder.writeScalarNode: failed", "error", cause)
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
+}
+
+// writeTime writes value using the configured OSON temporal scalar.
+func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) error {
+	switch enc.options.TimeEncoding {
+	case drvCommon.JSONTimeAsDate:
+		payload, err := converters.EncodeDate(value)
+		if err != nil {
+			return _wrapScalarEncodingError("writeTime", err)
+		}
+		tree.writeUB1(osonOpDate)
+		tree.writeBytes(payload)
+	case drvCommon.JSONTimeAsTimestampTZ:
+		payload, err := converters.EncodeTimestampWithTimeZone(value)
+		if err != nil {
+			return _wrapScalarEncodingError("writeTime", err)
+		}
+		tree.writeUB1(osonOpTimestampTZ)
+		tree.writeBytes(payload)
+	default:
+		return enc.writeTimestamp(tree, value)
+	}
+	return nil
 }
 
 // writeString writes one UTF-8 string scalar node.
