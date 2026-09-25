@@ -50,6 +50,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -187,6 +188,16 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	}
 	err := ns.ntAdapter.Connect(ctx, address)
 	if err != nil {
+		// Only transport connection failures can mean that an endpoint is down.
+		// Oracle Net, TLS, and authentication failures happen later and do not
+		// reach this point.
+		if isDownHostError(ctx, err) {
+			key := address.ResolvedIP
+			if key == "" {
+				key = address.Host
+			}
+			naming.MarkDownHost(key)
+		}
 		return err
 	}
 	//initializes sndDatapkt with SDU size
@@ -200,6 +211,44 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	ns.rcvDatapkt = &dataPacket{}
 	return nil
 }
+
+// isDownHostError identifies transport failures that indicate a host or its
+// route is currently unavailable. A refusal is deliberately excluded: it
+// proves that the host responded, even when no listener is available there.
+func isDownHostError(ctx context.Context, err error) bool {
+	// The TCP adapter translates a caller deadline into an Oracle CtxTimeout
+	// error. Check both the context and the error before considering timeout
+	// errors below, so a caller giving up does not penalize a healthy endpoint.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return false
+	}
+
+	if errors.Is(err, syscall.EHOSTDOWN) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) {
+		return true
+	}
+
+	var timeoutCause common.CtxTimeoutCauseError
+	if errors.As(err, &timeoutCause) {
+		return true
+	}
+
+	var sqlErr oracleErrors.SQLError
+	if errors.As(err, &sqlErr) && sqlErr.ErrorCode() == string(oracleErrors.CtxTimeout) {
+		return true
+	}
+
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
 func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) error {
 	if ns.sAtts.version < TNS_VERSION_MINIMUM {
 		err := ns.Disconnect(ctx, 0)
