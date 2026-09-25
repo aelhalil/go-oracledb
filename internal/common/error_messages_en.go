@@ -294,6 +294,18 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.WalletCACertificatesMissing), "wallet contains no CA certificates")
 	message.SetString(language.English, string(oracleErrors.WalletCACertificatesParseFailed), "failed to parse wallet CA certificates")
 
+	// Document: No
+	// Cause:    A network packet could not be compressed with the negotiated codec.
+	// Action:   Inspect the cause and the compression codec in args[0].
+	// Comment:  Arg[0]: compression codec (zlib)
+	message.SetString(language.English, string(oracleErrors.NetworkCompressionFailed), "Failed to compress network packet using %s")
+
+	// Document: No
+	// Cause:    A compressed network packet could not be decompressed with the negotiated codec.
+	// Action:   Inspect the cause and the compression codec in args[0].
+	// Comment:  Arg[0]: compression codec (zlib)
+	message.SetString(language.English, string(oracleErrors.NetworkDecompressionFailed), "Failed to decompress network packet using %s")
+
 	message.SetString(language.English, string(oracleErrors.ConnectTimeout), "%s Timeout of %d for %s.(CONNECTION_ID=%s)")
 
 	// Document: Yes
@@ -613,6 +625,12 @@ func initMessagesEn() {
 	// Action:   Inspect the wrapped cause for details.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.JSONRenderingError), "failed to render Oracle JSON value as JSON text")
+	// Document: No
+	// Cause:    The connection provided is not an Oracle connection
+	// Action:   Create a connection using the Oracle driver and try again
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidConnection), "the connection provided is not an Oracle connection")
+
 	// Document: No
 	// Cause:    Token-based authentication resolved an empty token.
 	// Action:   Provide a non-empty token directly with AccessToken or ensure the token file contains a valid token.
