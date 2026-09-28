@@ -64,48 +64,15 @@ const (
 	TimeAsDate = drvCommon.JSONTimeAsDate
 )
 
-// Options configures JSON construction and materialization. Create options with
-// [NumberModeOption] and [TimeEncodingOption], and combine them with
-// [JoinOptions]. The zero value selects [NumberDefault] and [TimeAsTimestamp].
+// Options configures JSON construction and materialization. The zero value
+// selects [NumberDefault] and [TimeAsTimestamp].
 //
 // A [JSON] retains its options through [JSON.Scan] and propagates them to lazy
 // views returned by [JSON.AsJSONObject], [JSON.AsJSONArray], and
 // [JSON.AsJSONScalar].
 type Options struct {
-	set        optionSet
-	conversion drvCommon.JSONConversionOptions
-}
-
-// optionSet records the explicitly selected Options properties.
-type optionSet uint64
-
-const (
-	numberModeSet optionSet = 1 << iota
-	timeEncodingSet
-)
-
-// NumberModeOption returns an Options that selects mode for number
-// materialization.
-func NumberModeOption(mode NumberMode) Options {
-	return Options{set: numberModeSet, conversion: drvCommon.JSONConversionOptions{NumberMode: mode}}
-}
-
-// TimeEncodingOption returns an Options that selects encoding for time.Time.
-func TimeEncodingOption(encoding TimeEncoding) Options {
-	return Options{set: timeEncodingSet, conversion: drvCommon.JSONConversionOptions{TimeEncoding: encoding}}
-}
-
-// JoinOptions combines options. Later arguments override earlier ones.
-func JoinOptions(opts ...Options) Options {
-	var result Options
-	for _, option := range opts {
-		if option.set&numberModeSet != 0 {
-			result.conversion.NumberMode = option.conversion.NumberMode
-		}
-		if option.set&timeEncodingSet != 0 {
-			result.conversion.TimeEncoding = option.conversion.TimeEncoding
-		}
-		result.set |= option.set
-	}
-	return result
+	// NumberMode selects the Go representation of materialized JSON numbers.
+	NumberMode NumberMode
+	// TimeEncoding selects the OSON scalar used to encode time.Time values.
+	TimeEncoding TimeEncoding
 }

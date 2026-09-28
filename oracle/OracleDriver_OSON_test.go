@@ -75,7 +75,7 @@ func TestDriver_OSON_RebindFetchedDocument(t *testing.T) {
 	}
 
 	var rebound ojson.JSON
-	if err = rebound.SetOptions(ojson.NumberModeOption(ojson.NumberAsJSONNumber)); err != nil {
+	if err = rebound.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber}); err != nil {
 		t.Fatalf("set number option failed: %v", err)
 	}
 	if err = db.QueryRowContext(ctx, "select doc from "+table+" where id = 2").Scan(&rebound); err != nil {
@@ -168,9 +168,9 @@ func TestDriver_OSON_TimeTypes(t *testing.T) {
 		opts ojson.Options
 		want string
 	}{
-		{id: 1, name: "timestamp", opts: ojson.TimeEncodingOption(ojson.TimeAsTimestamp), want: `"2025-02-03T04:05:06.123456789"`},
-		{id: 2, name: "timestamp with time zone", opts: ojson.TimeEncodingOption(ojson.TimeAsTimestampTZ), want: `"2025-02-03T04:05:06.123456789+02:00"`},
-		{id: 3, name: "date", opts: ojson.TimeEncodingOption(ojson.TimeAsDate), want: `"2025-02-03T04:05:06"`},
+		{id: 1, name: "timestamp", opts: ojson.Options{TimeEncoding: ojson.TimeAsTimestamp}, want: `"2025-02-03T04:05:06.123456789"`},
+		{id: 2, name: "timestamp with time zone", opts: ojson.Options{TimeEncoding: ojson.TimeAsTimestampTZ}, want: `"2025-02-03T04:05:06.123456789+02:00"`},
+		{id: 3, name: "date", opts: ojson.Options{TimeEncoding: ojson.TimeAsDate}, want: `"2025-02-03T04:05:06"`},
 	}
 
 	for _, test := range cases {
@@ -209,7 +209,7 @@ func TestDriver_OSON_Number(t *testing.T) {
 	}
 
 	var got ojson.JSON
-	if err = got.SetOptions(ojson.NumberModeOption(ojson.NumberAsJSONNumber)); err != nil {
+	if err = got.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber}); err != nil {
 		t.Fatalf("set JSON number option failed: %v", err)
 	}
 	if err = db.QueryRowContext(ctx, "select doc from "+table+" where id = 1").Scan(&got); err != nil {

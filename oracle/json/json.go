@@ -61,7 +61,7 @@
 //
 // [Options] controls number materialization and time.Time encoding. Set options
 // with [NewJSONWithOptions] or [JSON.SetOptions]; they propagate to all lazy
-// views. Use [JoinOptions] to combine independently selected options.
+// views. Set fields directly in an Options struct literal.
 package json
 
 import (
@@ -144,7 +144,7 @@ func NewJSON(value any) (JSON, error) {
 // select the OSON scalar used for time.Time values; number options control
 // future GetValue calls.
 func NewJSONWithOptions(value any, opts Options) (JSON, error) {
-	document, err := oson.EncodeWithOptions(value, opts.conversion)
+	document, err := oson.EncodeWithOptions(value, drvCommon.JSONConversionOptions(opts))
 	if err != nil {
 		return JSON{}, err
 	}
@@ -215,12 +215,12 @@ func (jz JSON) Value() (driver.Value, error) {
 		return append([]byte(nil), jz.document...), nil
 	}
 
-	common.Odl.Debug("JSON.Value: encoding child view", "options", jz.options.conversion)
-	value, err := jz.node.GetValue(jz.options.conversion)
+	common.Odl.Debug("JSON.Value: encoding child view", "options", drvCommon.JSONConversionOptions(jz.options))
+	value, err := jz.node.GetValue(drvCommon.JSONConversionOptions(jz.options))
 	if err != nil {
 		return nil, err
 	}
-	document, err := oson.EncodeWithOptions(value, jz.options.conversion)
+	document, err := oson.EncodeWithOptions(value, drvCommon.JSONConversionOptions(jz.options))
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +303,7 @@ func (jz JSON) GetValue() (any, error) {
 		cause := fmt.Errorf("JSON has no parsed OSON node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return jz.node.GetValue(jz.options.conversion)
+	return jz.node.GetValue(drvCommon.JSONConversionOptions(jz.options))
 }
 
 // String returns JSON text for diagnostics. It returns "<JSON: uninitialized>"
@@ -334,7 +334,7 @@ func (obj JSONObject) GetValue() (map[string]any, error) {
 		cause := fmt.Errorf("JSONObject has no underlying object node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return obj.node.Value(obj.options.conversion)
+	return obj.node.Value(drvCommon.JSONConversionOptions(obj.options))
 }
 
 // Keys returns the names of the object's members. Their order is unspecified.
@@ -396,7 +396,7 @@ func (arr JSONArray) GetValue() ([]any, error) {
 		cause := fmt.Errorf("JSONArray has no underlying array node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return arr.node.Value(arr.options.conversion)
+	return arr.node.Value(drvCommon.JSONConversionOptions(arr.options))
 }
 
 // Get returns the lazy child JSON at index i. It returns an error if i is
@@ -444,7 +444,7 @@ func (scalar JSONScalar) GetValue() (any, error) {
 		cause := fmt.Errorf("JSONScalar has no underlying scalar node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return scalar.node.Value(scalar.options.conversion)
+	return scalar.node.Value(drvCommon.JSONConversionOptions(scalar.options))
 }
 
 // String implements fmt.Stringer, returning JSON text for display.

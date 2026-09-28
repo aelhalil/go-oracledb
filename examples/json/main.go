@@ -109,7 +109,7 @@ func main() {
 		}
 
 		// setup number decoding as json.Number
-		opts := ojson.NumberModeOption(ojson.NumberAsJSONNumber)
+		opts := ojson.Options{NumberMode: ojson.NumberAsJSONNumber}
 		doc.SetOptions(opts)
 
 		text := doc.String()

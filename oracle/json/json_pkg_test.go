@@ -55,8 +55,7 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestOptionsComposition", Categories: "unitary", Exclusive: false, Fn: TestOptionsComposition},
-	{Name: "TestOptionsDefaultOverride", Categories: "unitary", Exclusive: false, Fn: TestOptionsDefaultOverride},
+	{Name: "TestOptionsFields", Categories: "unitary", Exclusive: false, Fn: TestOptionsFields},
 	{Name: "TestJSONStringValue", Categories: "unitary", Exclusive: false, Fn: TestJSONStringValue},
 	{Name: "TestNewJSONFromString", Categories: "unitary", Exclusive: false, Fn: TestNewJSONFromString},
 	{Name: "TestJSONNilContainers", Categories: "unitary", Exclusive: false, Fn: TestJSONNilValues},

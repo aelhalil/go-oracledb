@@ -43,33 +43,39 @@ import (
 	stdjson "encoding/json"
 	"reflect"
 	"testing"
+	"time"
 )
 
-// TestOptionsComposition verifies that explicit later options override earlier settings.
-func TestOptionsComposition(t *testing.T) {
-	options := JoinOptions(
-		NumberModeOption(NumberAsJSONNumber),
-		TimeEncodingOption(TimeAsDate),
-	)
-	options = JoinOptions(options, NumberModeOption(NumberAsFloat64))
-
-	if options.set&numberModeSet == 0 || options.conversion.NumberMode != NumberAsFloat64 {
-		t.Fatalf("number option = (%v, %v), want (set, %v)", options.set, options.conversion.NumberMode, NumberAsFloat64)
+// TestOptionsFields verifies public option fields control encoding and materialization together.
+func TestOptionsFields(t *testing.T) {
+	value := map[string]any{
+		"number": int64(42),
+		"time":   time.Date(2025, 2, 3, 4, 5, 6, 123456789, time.UTC),
 	}
-	if options.set&timeEncodingSet == 0 || options.conversion.TimeEncoding != TimeAsDate {
-		t.Fatalf("time option = (%v, %v), want (set, %v)", options.set, options.conversion.TimeEncoding, TimeAsDate)
+	doc, err := NewJSONWithOptions(value, Options{
+		NumberMode:   NumberAsJSONNumber,
+		TimeEncoding: TimeAsDate,
+	})
+	if err != nil {
+		t.Fatalf("NewJSONWithOptions() failed: %v", err)
 	}
-}
-
-// TestOptionsDefaultOverride verifies that an explicitly selected default
-// overrides an earlier value when options are joined.
-func TestOptionsDefaultOverride(t *testing.T) {
-	options := JoinOptions(
-		NumberModeOption(NumberAsFloat64),
-		NumberModeOption(NumberDefault),
-	)
-	if options.conversion.NumberMode != NumberDefault {
-		t.Fatalf("number mode = %v, want NumberDefault", options.conversion.NumberMode)
+	got, err := doc.GetValue()
+	if err != nil {
+		t.Fatalf("GetValue() failed: %v", err)
+	}
+	if number := got.(map[string]any)["number"]; number != stdjson.Number("42") {
+		t.Fatalf("number = %#v, want json.Number(42)", number)
+	}
+	object, err := doc.AsJSONObject()
+	if err != nil {
+		t.Fatalf("AsJSONObject() failed: %v", err)
+	}
+	child, ok := object.Get("time")
+	if !ok {
+		t.Fatal("Get(time) = false")
+	}
+	if got := child.String(); got != `"2025-02-03T04:05:06"` {
+		t.Fatalf("date = %q, want whole seconds without time zone", got)
 	}
 }
 
@@ -197,7 +203,7 @@ func TestJSONSetOptionsSurvivesScan(t *testing.T) {
 	}
 
 	var got JSON
-	if err = got.SetOptions(NumberModeOption(NumberAsJSONNumber)); err != nil {
+	if err = got.SetOptions(Options{NumberMode: NumberAsJSONNumber}); err != nil {
 		t.Fatalf("JSON.SetOptions() failed: %v", err)
 	}
 	if err = got.Scan(value); err != nil {
@@ -217,7 +223,7 @@ func TestJSONSetOptionsSurvivesScan(t *testing.T) {
 func TestJSONChildValueUsesInheritedOptions(t *testing.T) {
 	parent, err := NewJSONWithOptions(
 		map[string]any{"number": stdjson.Number("9007199254740993")},
-		NumberModeOption(NumberAsFloat64),
+		Options{NumberMode: NumberAsFloat64},
 	)
 	if err != nil {
 		t.Fatalf("NewJSONWithOptions() failed: %v", err)
