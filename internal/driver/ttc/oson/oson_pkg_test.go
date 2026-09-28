@@ -55,6 +55,7 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestParse_RejectsEmptyTree", Categories: "unitary", Exclusive: false, Fn: TestParse_RejectsEmptyTree},
 	{Name: "TestArrayNode_NestedObjectArrayTraversal", Categories: "unitary", Exclusive: false, Fn: TestArrayNode_NestedObjectArrayTraversal},
 	{Name: "TestArrayNode_RejectsMalformedLayouts", Categories: "unitary", Exclusive: false, Fn: TestArrayNode_RejectsMalformedLayouts},
 
@@ -80,9 +81,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestEncodeContainers_SupportsLongFieldNames", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_SupportsLongFieldNames},
 	{Name: "TestOsonWriteBufferPatchUint_WritesExpectedWidths", Categories: "unitary", Exclusive: false, Fn: TestOsonWriteBufferPatchUint_WritesExpectedWidths},
 	{Name: "TestOsonWriteBufferPatchUint_RejectsInvalidPatch", Categories: "unitary", Exclusive: false, Fn: TestOsonWriteBufferPatchUint_RejectsInvalidPatch},
-	{Name: "TestOsonEncoder_BufferPatchError", Categories: "unitary", Exclusive: false, Fn: TestOsonEncoder_BufferPatchError},
 
-	{Name: "TestNewNodeAt_RejectsMissingContext", Categories: "unitary", Exclusive: false, Fn: TestNewNodeAt_RejectsMissingContext},
 	{Name: "TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles", Categories: "unitary", Exclusive: false, Fn: TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles},
 	{Name: "TestNewNodeAt_RejectsUpdateHeaderOffset", Categories: "unitary", Exclusive: false, Fn: TestNewNodeAt_RejectsUpdateHeaderOffset},
 	{Name: "TestNodeOffsets_CoverAddressWidths", Categories: "unitary", Exclusive: false, Fn: TestNodeOffsets_CoverAddressWidths},
@@ -103,7 +102,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestReadFieldIDEntriesAt_ReadsAllSupportedWidths", Categories: "unitary", Exclusive: false, Fn: TestReadFieldIDEntriesAt_ReadsAllSupportedWidths},
 
 	{Name: "TestOsonBuffer_NewBufferInitialState", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_NewBufferInitialState},
-	{Name: "TestOsonBuffer_RejectsInvalidInternalCursor", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_RejectsInvalidInternalCursor},
+	{Name: "TestOsonBuffer_RejectsSequentialUnderflow", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_RejectsSequentialUnderflow},
 	{Name: "TestOsonBuffer_SetPositionValidatesBounds", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_SetPositionValidatesBounds},
 	{Name: "TestOsonBuffer_ReadsSequentialValues", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_ReadsSequentialValues},
 	{Name: "TestOsonBuffer_AbsoluteReads", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_AbsoluteReads},
@@ -129,7 +128,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOsonHeader_MetadataHelpersReflectFlagsAndBounds", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_MetadataHelpersReflectFlagsAndBounds},
 	{Name: "TestOsonHeader_ForwardingHelpers", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ForwardingHelpers},
 	{Name: "TestOsonHeader_AddForwardingAddressValidatesMappings", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_AddForwardingAddressValidatesMappings},
-	{Name: "TestOsonHeader_RejectsNilBuffer", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsNilBuffer},
 	{Name: "TestOsonHeader_RejectsCorruptDictionaryHeaps", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsCorruptDictionaryHeaps},
 	{Name: "TestOsonHeader_DictionaryReadersHandleBothOffsetWidths", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_DictionaryReadersHandleBothOffsetWidths},
 	{Name: "TestOsonHeader_DictionaryReadersRejectTruncation", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_DictionaryReadersRejectTruncation},
@@ -145,8 +143,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOsonHeader_RejectsTruncatedInput", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsTruncatedInput},
 	{Name: "TestOsonHeader_RejectsInvalidSecondaryDictionary", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsInvalidSecondaryDictionary},
 	{Name: "TestNode_ReadHelpersRejectMalformedInput", Categories: "unitary", Exclusive: false, Fn: TestNode_ReadHelpersRejectMalformedInput},
-	{Name: "TestScalarNode_RejectsTruncatedPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsTruncatedPayloads},
-	{Name: "TestObjectNode_ReadersRejectTruncatedLayouts", Categories: "unitary", Exclusive: false, Fn: TestObjectNode_ReadersRejectTruncatedLayouts},
 }
 
 func TestCategoryExecutor(t *testing.T) {

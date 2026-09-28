@@ -72,25 +72,14 @@ type objectNode struct {
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - offset: absolute document offset of the object node.
+//   - opcode: object opcode already read and classified by newNodeAt.
 //
 // Output:
 //   - *objectNode: OSON object node.
 //
 // Errors:
-//   - invalid object opcode.
 //   - malformed object layout, field IDs, or child offsets.
-func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNode, error) {
-	opcode, err := buf.readUB1At(offset)
-	if err != nil {
-		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset)
-		return nil, err
-	}
-	if !isObjectOpcode(opcode) {
-		details := fmt.Sprintf("failed to identify object from opcode 0x%02x", opcode)
-		common.Odl.Debug("newObjectNodeAt: failed", "error", details, "offset", offset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
-	}
-
+func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drvCommon.UB1) (*objectNode, error) {
 	memberCount, fieldIDArrayStart, childOffsetArrayStart, err := readObjectLayout(buf, header, offset, opcode)
 	if err != nil {
 		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "opcode", opcode)
@@ -155,8 +144,7 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNo
 //   - decoded field IDs in member order.
 //
 // Errors:
-//   - unsupported field-id width.
-//   - buffer-read failure or UB4 conversion failure.
+//   - buffer-read failure.
 func readFieldIDEntriesAt(buf *osonBuffer, header *osonHeader, start, count int) ([]int, error) {
 	size := header.numFieldIDBytes()
 	if err := ensureNodeTableRange(buf, start, count, size, "readFieldIDEntriesAt"); err != nil {
@@ -178,16 +166,12 @@ func readFieldIDEntriesAt(buf *osonBuffer, header *osonHeader, start, count int)
 				return nil, err
 			}
 			entries[i] = int(val)
-		case osonUB4Size:
+		default: // numFieldIDBytes returns only UB1, UB2, or UB4.
 			val, err := buf.readUB4At(entryOffset)
 			if err != nil {
 				return nil, err
 			}
 			entries[i] = int(val)
-		default:
-			details := fmt.Sprintf("invalid field ID width %d", size)
-			common.Odl.Debug("readFieldIDEntriesAt: failed", "error", details, "width", size)
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 		}
 	}
 	return entries, nil
@@ -244,8 +228,7 @@ func readFieldIDEntriesAt(buf *osonBuffer, header *osonHeader, start, count int)
 //   - bad delegate reference
 //   - buffer-read failure
 func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode drvCommon.UB1) (count, fidArrayStart, childArrayStart int, err error) {
-	switch opcode & osonOpChildSizeBits {
-	case osonOpChildCountUB1, osonOpChildCountUB2, osonOpChildCountUB4:
+	if opcode&osonOpChildSizeBits != osonOpChildDelegateForm {
 		// Direct object layout:
 		//   [opcode][count][field ids][child offsets][children...]
 		count, nextOffset, err := readContainerCountAt(buf, offset+osonUB1Size, opcode)
@@ -255,63 +238,59 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 		fidArrayStart = nextOffset
 		childArrayStart = fidArrayStart + (count * header.numFieldIDBytes())
 		return count, fidArrayStart, childArrayStart, nil
-	case osonOpChildDelegateForm:
-		// Delegated/shared-FID object layout:
-		//   current object:
-		//     [opcode][delegate ref][its own child offsets][its own children...]
-		//   delegate object:
-		//     [opcode][count][shared field ids][delegate child offsets][delegate children...]
-		//
-		// So this branch resolves the delegate object first, reads `count` and the
-		// shared field-id array from that delegate, and then sets
-		// `childArrayStart` back into the current object immediately after the
-		// delegate reference.
-		delegateWidth := childOffsetSize(opcode)
-		// Delegate references remain relative to the primary tree segment, even
-		// when this referring object was reached through a V2 update redirect
-		// into the extended tree segment. This matches the OSON Java decoder.
-		primaryTreeStart := header.treeSegmentOffset()
+	}
 
-		var delegateOffset int
-		if delegateWidth == osonUB2Size {
-			val, readErr := buf.readUB2At(offset + osonUB1Size)
-			if readErr != nil {
-				return 0, 0, 0, readErr
-			}
-			delegateOffset = primaryTreeStart + int(val)
-		} else {
-			val, readErr := buf.readUB4At(offset + osonUB1Size)
-			if readErr != nil {
-				return 0, 0, 0, readErr
-			}
+	// Delegated/shared-FID object layout:
+	//   current object:
+	//     [opcode][delegate ref][its own child offsets][its own children...]
+	//   delegate object:
+	//     [opcode][count][shared field ids][delegate child offsets][delegate children...]
+	//
+	// So this branch resolves the delegate object first, reads `count` and the
+	// shared field-id array from that delegate, and then sets
+	// `childArrayStart` back into the current object immediately after the
+	// delegate reference.
+	delegateWidth := childOffsetSize(opcode)
+	// Delegate references remain relative to the primary tree segment, even
+	// when this referring object was reached through a V2 update redirect
+	// into the extended tree segment. This matches the OSON Java decoder.
+	primaryTreeStart := header.treeSegmentOffset()
 
-			delegateOffset = primaryTreeStart + int(val)
-		}
-
-		delegateOpcode, readErr := buf.readUB1At(delegateOffset)
+	var delegateOffset int
+	if delegateWidth == osonUB2Size {
+		val, readErr := buf.readUB2At(offset + osonUB1Size)
 		if readErr != nil {
 			return 0, 0, 0, readErr
 		}
-		if !isObjectOpcode(delegateOpcode) || delegateOpcode&osonOpChildSizeBits == osonOpChildDelegateForm {
-			details := fmt.Sprintf("delegate object %d has no field IDs", delegateOffset)
-			common.Odl.Debug("readObjectLayout: failed", "error", details, "offset", offset, "delegateOffset", delegateOffset, "delegateOpcode", delegateOpcode)
-			return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
-		}
-
-		count, nextOffset, readErr := readContainerCountAt(buf, delegateOffset+osonUB1Size, delegateOpcode)
+		delegateOffset = primaryTreeStart + int(val)
+	} else {
+		val, readErr := buf.readUB4At(offset + osonUB1Size)
 		if readErr != nil {
 			return 0, 0, 0, readErr
 		}
-		fidArrayStart = nextOffset
-		// In the delegate form, this object's own child-offset array begins
-		// immediately after the delegate reference.
-		childArrayStart = offset + osonUB1Size + delegateWidth
-		return count, fidArrayStart, childArrayStart, nil
-	default:
-		details := fmt.Sprintf("invalid object count encoding 0x%02x", opcode&osonOpChildSizeBits)
-		common.Odl.Debug("readObjectLayout: failed", "error", details, "offset", offset, "opcode", opcode)
+
+		delegateOffset = primaryTreeStart + int(val)
+	}
+
+	delegateOpcode, readErr := buf.readUB1At(delegateOffset)
+	if readErr != nil {
+		return 0, 0, 0, readErr
+	}
+	if !isObjectOpcode(delegateOpcode) || delegateOpcode&osonOpChildSizeBits == osonOpChildDelegateForm {
+		details := fmt.Sprintf("delegate object %d has no field IDs", delegateOffset)
+		common.Odl.Debug("readObjectLayout: failed", "error", details, "offset", offset, "delegateOffset", delegateOffset, "delegateOpcode", delegateOpcode)
 		return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
+
+	count, nextOffset, readErr := readContainerCountAt(buf, delegateOffset+osonUB1Size, delegateOpcode)
+	if readErr != nil {
+		return 0, 0, 0, readErr
+	}
+	fidArrayStart = nextOffset
+	// In the delegate form, this object's own child-offset array begins
+	// immediately after the delegate reference.
+	childArrayStart = offset + osonUB1Size + delegateWidth
+	return count, fidArrayStart, childArrayStart, nil
 }
 
 // Kind implements the JSONNode interface.

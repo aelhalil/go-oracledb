@@ -163,16 +163,9 @@ func newOsonHeader(buffer *osonBuffer) (*osonHeader, error) {
 //     can begin decoding nodes immediately
 //
 // Errors:
-//   - Returns common.OsonHeaderError for a nil buffer or invalid OSON header,
+//   - Returns common.OsonHeaderError for an invalid OSON header,
 //     dictionary, tree segment, or optional update-header tail.
 func (h *osonHeader) initialize(buf *osonBuffer) error {
-	// A nil buffer is a programming error; fail before any parsing.
-	if buf == nil {
-		cause := fmt.Errorf("header initialization requires a buffer")
-		common.Odl.Debug("osonHeader.initialize: failed", "error", cause)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-	}
-
 	// parse the fixed header first so dictionary sizes and counts are known.
 	layout, err := h.readHeader(buf)
 	if err != nil {
@@ -589,15 +582,12 @@ func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (drvCommon.UB4, error)
 //
 // Input:
 //   - buf: buffer positioned at the primary dictionary hash array.
-//   - layout: counts and heap sizes read from the fixed header.
+//   - layout: counts and heap sizes read from the fixed header; primaryCount is positive.
 //
 // Errors:
 //   - Returns common.OsonHeaderError for truncated arrays, invalid offsets, or malformed heap entries.
 func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictionaryLayout) error {
 	count := layout.primaryCount
-	if count == 0 {
-		return nil
-	}
 	// A non-empty dictionary with an empty heap is structurally invalid.
 	if layout.primaryHeapSize == 0 {
 		cause := fmt.Errorf("primary dictionary declares %d fields but its heap size is zero", count)
@@ -639,11 +629,6 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 		}
 		entry := heap[offset:]
-		if len(entry) == 0 {
-			cause := fmt.Errorf("entry at %d is empty", offset)
-			common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "error", cause, "offset", offset)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-		}
 
 		// Primary dictionary entries use a single-byte length prefix.
 		length := int(entry[0])
@@ -680,23 +665,13 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 //
 // Input:
 //   - buf: buffer positioned at the secondary dictionary hash array.
-//   - layout: counts and heap sizes read from the fixed header.
+//   - layout: metadata from a v3+ header with a positive secondaryCount.
 //
 // Errors:
-//   - Returns common.OsonHeaderError for unsupported versions, truncated arrays,
+//   - Returns common.OsonHeaderError for truncated arrays,
 //     invalid offsets, or malformed long-key heap entries.
 func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDictionaryLayout) error {
-	// Long-key dictionaries are legal only in OSON v3+.
-	if h.formatVersion < 3 {
-		cause := fmt.Errorf("secondary dictionary present but version is %d", h.formatVersion)
-		common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "error", cause, "version", h.formatVersion)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-	}
-
 	count := layout.secondaryCount
-	if count == 0 {
-		return nil
-	}
 	// A declared long-key dictionary must have heap bytes to decode names from.
 	if layout.secondaryHeapSize == 0 {
 		cause := fmt.Errorf("secondary dictionary declares %d fields but its heap size is zero", count)
@@ -971,9 +946,6 @@ func (h *osonHeader) segmentOffsetForNode(absoluteOffset int) int {
 // containsNodeOffset rejects forwarding targets outside the declared tree
 // segments before node parsing reads an opcode from them.
 func (h *osonHeader) containsNodeOffset(absoluteOffset int) bool {
-	if h.treeSegmentByteLength == 0 && h.extendedTreeSegmentByteLength == 0 {
-		return true
-	}
 	primaryEnd := h.treeSegmentStartOffset + int(h.treeSegmentByteLength)
 	if absoluteOffset >= h.treeSegmentStartOffset && absoluteOffset < primaryEnd {
 		return true
@@ -1017,11 +989,6 @@ func (h *osonHeader) resolveForwardedOffset(relativeOffset int) (int, error) {
 //   - Returns common.OsonParsingError when no mapping exists or the document has
 //     no extended tree segment.
 func (h *osonHeader) resolveOverflowOffset(absoluteOffset int) (int, error) {
-	if h.forwardingAddresses == nil {
-		details := fmt.Sprintf("overflow offset %d has no mapping", absoluteOffset)
-		common.Odl.Debug("osonHeader.resolveOverflowOffset: failed", "error", details, "absoluteOffset", absoluteOffset)
-		return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
-	}
 	// Overflow mappings are keyed by the original node's tree-relative position in
 	// the primary tree segment, not by absolute document offset.
 	relativeOffset := absoluteOffset - h.treeSegmentStartOffset

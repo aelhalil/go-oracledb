@@ -169,16 +169,9 @@ func IsOson(data drvCommon.B1Array) bool {
 //   - JSONNode for the resolved node.
 //
 // Errors:
-//   - nil buffer/header.
 //   - buffer-read failure.
 //   - malformed redirect or unsupported node layout.
 func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONNode, error) {
-	if buf == nil || header == nil {
-		details := "missing OSON buffer or header"
-		common.Odl.Debug("newNodeAt: failed", "error", details, "offset", offset)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
-	}
-
 	resolvedOffset := offset
 	seen := make(map[int]struct{})
 	var opcode drvCommon.UB1
@@ -225,11 +218,11 @@ func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONN
 		"opcode", opcode)
 	switch {
 	case isObjectOpcode(opcode):
-		return newObjectNodeAt(buf, header, resolvedOffset)
+		return newObjectNodeAt(buf, header, resolvedOffset, opcode)
 	case isArrayOpcode(opcode):
-		return newArrayNodeAt(buf, header, resolvedOffset)
+		return newArrayNodeAt(buf, header, resolvedOffset, opcode)
 	default:
-		return newScalarNodeAt(buf, header, resolvedOffset)
+		return newScalarNodeAt(buf, header, resolvedOffset, opcode), nil
 	}
 }
 
@@ -351,14 +344,11 @@ func readChildOffsetsAt(buf *osonBuffer, header *osonHeader, containerOffset, st
 }
 
 // ensureNodeTableRange validates an untrusted node table before allocation.
+// Callers supply a non-nil buffer and a width from childOffsetSize or numFieldIDBytes.
 func ensureNodeTableRange(buf *osonBuffer, start, count, width int, stage string) error {
-	if buf == nil || start < 0 || count < 0 || width <= 0 || start > buf.size() || count > (buf.size()-start)/width {
-		documentSize := 0
-		if buf != nil {
-			documentSize = buf.size()
-		}
+	if start < 0 || count < 0 || start > buf.size() || count > (buf.size()-start)/width {
 		details := "node table outside document"
-		common.Odl.Debug(stage+": failed", "error", details, "start", start, "count", count, "width", width, "documentSize", documentSize)
+		common.Odl.Debug(stage+": failed", "error", details, "start", start, "count", count, "width", width, "documentSize", buf.size())
 		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 	return nil
@@ -371,13 +361,12 @@ func ensureNodeTableRange(buf *osonBuffer, start, count, width int, stage string
 //   - header: parsed OSON header metadata.
 //   - containerOffset: absolute offset of the containing node.
 //   - entryOffset: absolute offset of the child-offset entry.
-//   - width: encoded width of the child-offset entry.
+//   - width: encoded width from childOffsetSize (UB2 or UB4).
 //
 // Output:
 //   - absolute document offset of the referenced child node.
 //
 // Errors:
-//   - unsupported entry width.
 //   - buffer-read failure.
 func readChildOffsetAt(buf *osonBuffer, header *osonHeader, containerOffset, entryOffset, width int) (int, error) {
 	treeStart := header.segmentOffsetForNode(containerOffset)
@@ -391,29 +380,19 @@ func readChildOffsetAt(buf *osonBuffer, header *osonHeader, containerOffset, ent
 		return treeStart + containerTreeOffset + delta, nil
 	}
 
-	switch width {
-	case osonUB2Size:
+	if width == osonUB2Size {
 		val, err := buf.readUB2At(entryOffset)
 		if err != nil {
 			return 0, err
 		}
-		// The stored value is relative to the beginning of the primary tree.
-		// That beginning is the common address-space origin for both the primary
-		// and extended tree segments, so do not add the current node's segment
-		// offset here.
-		return header.treeSegmentOffset() + int(val), nil
-	case osonUB4Size:
-		val, err := buf.readUB4At(entryOffset)
-		if err != nil {
-			return 0, err
-		}
-
 		return header.treeSegmentOffset() + int(val), nil
 	}
-
-	details := fmt.Sprintf("invalid child offset width %d", width)
-	common.Odl.Debug("readChildOffsetAt: failed", "error", details, "width", width, "entryOffset", entryOffset)
-	return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
+	val, err := buf.readUB4At(entryOffset)
+	if err != nil {
+		return 0, err
+	}
+	// Both tree segments use the primary tree as the absolute-offset origin.
+	return header.treeSegmentOffset() + int(val), nil
 }
 
 // readRelativeChildOffset decodes one signed child-offset delta from a relative table.
@@ -421,31 +400,18 @@ func readChildOffsetAt(buf *osonBuffer, header *osonHeader, containerOffset, ent
 // Input:
 //   - buf: OSON document reader.
 //   - entryOffset: absolute offset of the delta entry.
-//   - width: encoded width of the delta entry.
+//   - width: encoded width from childOffsetSize (UB2 or UB4).
 //
 // Output:
 //   - signed tree-relative delta stored at entryOffset.
 //
 // Errors:
-//   - unsupported delta width.
 //   - buffer-read failure.
 func readRelativeChildOffset(buf *osonBuffer, entryOffset, width int) (int, error) {
-	switch width {
-	case osonUB2Size:
+	if width == osonUB2Size {
 		val, err := buf.readSB2At(entryOffset)
-		if err != nil {
-			return 0, err
-		}
-		return int(val), nil
-	case osonUB4Size:
-		val, err := buf.readSB4At(entryOffset)
-		if err != nil {
-			return 0, err
-		}
-		return int(val), nil
-	default:
-		details := fmt.Sprintf("invalid child offset width %d", width)
-		common.Odl.Debug("readRelativeChildOffset: failed", "error", details, "width", width, "entryOffset", entryOffset)
-		return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
+		return int(val), err
 	}
+	val, err := buf.readSB4At(entryOffset)
+	return int(val), err
 }

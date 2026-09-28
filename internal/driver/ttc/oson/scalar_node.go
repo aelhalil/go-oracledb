@@ -89,20 +89,14 @@ func (scalar *scalarNode) Kind() drvCommon.Kind {
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - offset: absolute document offset of the scalar node.
+//   - opcode: opcode already read by newNodeAt; payload validation is lazy.
 //
 // Output:
 //   - *scalarNode rooted at offset.
 //
 // Errors:
-//   - invalid scalar opcode.
-//   - buffer-read failure.
-func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*scalarNode, error) {
-	opcode, err := buf.readUB1At(offset)
-	if err != nil {
-		common.Odl.Debug("newScalarNodeAt: failed", "error", err, "offset", offset)
-		return nil, err
-	}
-
+//   - none; Value validates the scalar opcode and payload.
+func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drvCommon.UB1) *scalarNode {
 	common.Odl.Debug("newScalarNodeAt: parsed", "offset", offset, "opcode", opcode)
 	return &scalarNode{
 		nodeBase: nodeBase{
@@ -111,7 +105,7 @@ func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*scalarNo
 			offset: offset,
 		},
 		opcode: opcode,
-	}, nil
+	}
 }
 
 // GetValue implements the JSONNode interface.

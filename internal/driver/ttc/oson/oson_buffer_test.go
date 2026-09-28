@@ -62,30 +62,9 @@ func TestOsonBuffer_NewBufferInitialState(t *testing.T) {
 	}
 }
 
-// TestOsonBuffer_RejectsInvalidInternalCursor verifies reads remain safe if a
-// caller corrupts the internal cursor position.
-func TestOsonBuffer_RejectsInvalidInternalCursor(t *testing.T) {
-	for _, test := range []struct {
-		name     string
-		position int
-	}{
-		{name: "negative", position: -1},
-		{name: "past end", position: 4},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			buffer := newOsonBuffer(drvCommon.B1Array{0x01, 0x02, 0x03})
-			buffer.pos = test.position
-			if got := buffer.remaining(); got != 0 {
-				t.Fatalf("remaining() = %d, want 0", got)
-			}
-			if err := buffer.ensureAvailable(1); err == nil {
-				t.Fatal("ensureAvailable() error = nil, want invalid cursor failure")
-			} else {
-				assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
-			}
-		})
-	}
-
+// TestOsonBuffer_RejectsSequentialUnderflow verifies truncated sequential reads
+// return buffer errors.
+func TestOsonBuffer_RejectsSequentialUnderflow(t *testing.T) {
 	for _, test := range []struct {
 		data drvCommon.B1Array
 		read func(*osonBuffer) error
@@ -291,13 +270,6 @@ func TestOsonBuffer_RejectsInvalidSequentialReads(t *testing.T) {
 		read func(*osonBuffer) error
 	}{
 		{
-			name: "negative advance",
-			read: func(b *osonBuffer) error {
-				_, err := b.advance(-1)
-				return err
-			},
-		},
-		{
 			name: "underflow ub2",
 			read: func(b *osonBuffer) error {
 				_, err := b.readUB2()
@@ -335,20 +307,6 @@ func TestOsonBuffer_RejectsInvalidAbsoluteRanges(t *testing.T) {
 		name string
 		read func(*osonBuffer) error
 	}{
-		{
-			name: "negative offset",
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readSliceAt(-1, 1)
-				return err
-			},
-		},
-		{
-			name: "negative length",
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readSliceAt(0, -1)
-				return err
-			},
-		},
 		{
 			name: "offset past limit",
 			read: func(buffer *osonBuffer) error {

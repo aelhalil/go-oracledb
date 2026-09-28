@@ -72,21 +72,11 @@ type arrayNode struct {
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - arrayNodeOffset: absolute document offset of the array opcode.
+//   - opcode: array opcode already read and classified by newNodeAt.
 //
 // Errors:
-//   - invalid array opcode.
 //   - malformed child-count or child-offset layout.
-func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int) (*arrayNode, error) {
-	opcode, err := buf.readUB1At(arrayNodeOffset)
-	if err != nil {
-		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset)
-		return nil, err
-	}
-	if !isArrayOpcode(opcode) {
-		details := fmt.Sprintf("failed to identify array from opcode 0x%02x", opcode)
-		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
-	}
+func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, opcode drvCommon.UB1) (*arrayNode, error) {
 	objectOnlyFlags := opcode & (osonOpChildNoSortBit | osonOpObjectSharedFieldIDsBit | osonOpObjectUpdateOverflowBit)
 	if objectOnlyFlags != 0 {
 		details := fmt.Sprintf("array opcode 0x%02x has invalid flags", opcode)

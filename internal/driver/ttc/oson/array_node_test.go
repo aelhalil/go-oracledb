@@ -120,17 +120,9 @@ func TestArrayNode_NestedObjectArrayTraversal(t *testing.T) {
 func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 	t.Parallel()
 
-	t.Run("non-array opcode", func(t *testing.T) {
-		if _, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpTrue}), &osonHeader{}, 0); err == nil {
-			t.Fatal("newArrayNodeAt(non-array) error = nil, want failure")
-		} else {
-			assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
-		}
-	})
-
 	t.Run("truncated child count", func(t *testing.T) {
 		zeroOffsetHeader := &osonHeader{treeSegmentStartOffset: 0}
-		if _, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpArrayType | osonOpChildCountUB2, 0x00}), zeroOffsetHeader, 0); err == nil {
+		if _, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpArrayType | osonOpChildCountUB2, 0x00}), zeroOffsetHeader, 0, osonOpArrayType|osonOpChildCountUB2); err == nil {
 			t.Fatal("newArrayNodeAt(truncated count) error = nil, want failure")
 		} else {
 			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
@@ -138,7 +130,7 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 	})
 
 	t.Run("invalid child offset", func(t *testing.T) {
-		zeroOffsetHeader := &osonHeader{treeSegmentStartOffset: 0}
+		zeroOffsetHeader := &osonHeader{treeSegmentStartOffset: 0, treeSegmentByteLength: 1}
 		arrayWithInvalidChildOffset := &arrayNode{
 			nodeBase:     nodeBase{buf: newOsonBuffer(drvCommon.B1Array{osonOpTrue}), header: zeroOffsetHeader},
 			childOffsets: []int{9},
@@ -149,7 +141,7 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 		if _, err := arrayWithInvalidChildOffset.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
 			t.Fatal("Value() with invalid child offset error = nil, want failure")
 		} else {
-			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+			assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 		}
 	})
 
@@ -179,7 +171,7 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 			{name: "delegate child header", opcode: osonOpArrayType | osonOpChildDelegateForm},
 		} {
 			t.Run(test.name, func(t *testing.T) {
-				_, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{byte(test.opcode), 0x00}), header, 0)
+				_, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{byte(test.opcode), 0x00}), header, 0, test.opcode)
 				if err == nil {
 					t.Fatalf("newArrayNodeAt(opcode=%#02x) error = nil, want failure", test.opcode)
 				}
@@ -188,7 +180,7 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 		}
 	})
 
-	if _, err := newArrayNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
-		t.Fatal("newArrayNodeAt(empty) error = nil, want out-of-range failure")
+	if _, err := newNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
+		t.Fatal("newNodeAt(empty) error = nil, want out-of-range failure")
 	}
 }

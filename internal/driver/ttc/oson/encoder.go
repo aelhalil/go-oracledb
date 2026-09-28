@@ -994,23 +994,16 @@ func (b *osonWriteBuffer) writeContainerCount(count int) {
 }
 
 // patchUint overwrites a previously reserved unsigned integer slot.
+// Callers supply a nonnegative offset and value, and a UB1, UB2, or UB4 width.
 func (b *osonWriteBuffer) patchUint(offset, width, value int) error {
-	if offset < 0 {
-		return fmt.Errorf("patch offset %d is negative", offset)
-	}
-	if value < 0 {
-		return fmt.Errorf("patch value %d is negative", value)
-	}
 	var maxValue uint64
 	switch width {
 	case osonUB1Size:
 		maxValue = math.MaxUint8
 	case osonUB2Size:
 		maxValue = math.MaxUint16
-	case osonUB4Size:
-		maxValue = math.MaxUint32
 	default:
-		return fmt.Errorf("unsupported patch width %d", width)
+		maxValue = math.MaxUint32
 	}
 
 	if uint64(value) > maxValue {

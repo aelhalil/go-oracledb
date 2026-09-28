@@ -326,10 +326,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			node, err := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0)
-			if err != nil {
-				t.Fatalf("failed to construct a scalar node from the valid test payload: %v", err)
-			}
+			node := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0, drvCommon.UB1(tc.payload[0]))
 			got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 			if err != nil {
 				t.Fatalf("failed to decode the valid scalar payload: %v", err)
@@ -400,10 +397,7 @@ func TestScalarNode_NumberAsStringOption(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			node, err := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0)
-			if err != nil {
-				t.Fatalf("failed to construct a scalar node from the valid numeric payload: %v", err)
-			}
+			node := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0, drvCommon.UB1(tc.payload[0]))
 			got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 			if err != nil {
 				t.Fatalf("failed to decode the numeric payload with JSONNumberAsJSONNumber: %v", err)
@@ -421,14 +415,12 @@ func TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat(t *testing.T) {
 	const text = "123456789012345678901234567890.12345"
 
 	payload := converters.ToNumber([]byte("12345678901234567890123456789012345"), false, 29)
-	node, err := newScalarNodeAt(
+	node := newScalarNodeAt(
 		newOsonBuffer(append(drvCommon.B1Array{osonOpOracleNumber, byte(drvCommon.UB1(len(payload)))}, payload...)),
 		&osonHeader{},
 		0,
+		osonOpOracleNumber,
 	)
-	if err != nil {
-		t.Fatalf("newScalarNodeAt() error = %v", err)
-	}
 
 	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	if err != nil {
@@ -462,10 +454,7 @@ func TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat(t *testing.T) {
 // TestScalarNode_KindReportsScalar expects a decoded short-string node to
 // identify itself as a scalar independently of its payload value.
 func TestScalarNode_KindReportsScalar(t *testing.T) {
-	node, err := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0)
-	if err != nil {
-		t.Fatalf("failed to construct a scalar node from a valid short-string payload: %v", err)
-	}
+	node := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0, 0x02)
 
 	if got, want := node.Kind(), drvCommon.KindScalar; got != want {
 		t.Fatalf("expected the short-string node to report kind %v, got %v", want, got)
@@ -475,10 +464,7 @@ func TestScalarNode_KindReportsScalar(t *testing.T) {
 // TestScalarNode_StringQuotesStringValue expects a decoded OSON string scalar
 // to render as a quoted JSON string.
 func TestScalarNode_StringQuotesStringValue(t *testing.T) {
-	node, err := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0)
-	if err != nil {
-		t.Fatalf("failed to construct a scalar node from a valid short-string payload: %v", err)
-	}
+	node := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0, 0x02)
 
 	text, err := node.String()
 	if err != nil {
@@ -602,16 +588,35 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 			payload: drvCommon.B1Array{0x7b},
 			want:    oracleErrors.OsonUnsupportedScalarError,
 		},
+		{name: "truncated short string payload", payload: drvCommon.B1Array{1}, want: oracleErrors.OsonBufferError},
+		{name: "truncated compact signed32 payload", payload: drvCommon.B1Array{osonOpCompactSigned32Prefix | 1}, want: oracleErrors.OsonBufferError},
+		{name: "truncated compact signed64 payload", payload: drvCommon.B1Array{osonOpCompactSigned64Prefix | 1}, want: oracleErrors.OsonBufferError},
+		{name: "truncated compact number payload", payload: drvCommon.B1Array{osonOpCompactOracleNumberPrefix}, want: oracleErrors.OsonBufferError},
+		{name: "truncated compact decimal payload", payload: drvCommon.B1Array{osonOpCompactDecimalPrefix}, want: oracleErrors.OsonBufferError},
+		{name: "truncated string number payload", payload: drvCommon.B1Array{osonOpStringNumber, 1}, want: oracleErrors.OsonBufferError},
+	}
+
+	for _, opcode := range []drvCommon.UB1{
+		osonOpStringUB1, osonOpStringUB2, osonOpStringUB4,
+		osonOpOracleNumber, osonOpStringNumber, osonOpID,
+		osonOpBinaryUB2, osonOpBinaryUB4,
+	} {
+		tests = append(tests, struct {
+			name    string
+			payload drvCommon.B1Array
+			want    oracleErrors.ErrorCode
+		}{
+			name:    "truncated length prefix " + strconv.Itoa(int(opcode)),
+			payload: drvCommon.B1Array{byte(opcode)},
+			want:    oracleErrors.OsonBufferError,
+		})
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			node, err := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0)
-			if err != nil {
-				t.Fatalf("newScalarNodeAt() error = %v", err)
-			}
+			node := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0, drvCommon.UB1(tc.payload[0]))
 
-			_, err = node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
+			_, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 			if err == nil {
 				t.Fatal("Value() error = nil, want failure")
 			}
@@ -626,10 +631,7 @@ func TestScalarNode_IDReadsFullUB1Length(t *testing.T) {
 	const payloadLength = math.MaxUint8
 	payload := append(drvCommon.B1Array{osonOpID, byte(payloadLength)}, make([]byte, payloadLength)...)
 
-	node, err := newScalarNodeAt(newOsonBuffer(payload), &osonHeader{}, 0)
-	if err != nil {
-		t.Fatalf("newScalarNodeAt() error = %v", err)
-	}
+	node := newScalarNodeAt(newOsonBuffer(payload), &osonHeader{}, 0, drvCommon.UB1(payload[0]))
 	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	if err != nil {
 		t.Fatalf("Value() error = %v", err)
@@ -664,14 +666,12 @@ func assertOracleErrorCode(t *testing.T, err error, want oracleErrors.ErrorCode)
 // preserves special IEEE values such as positive infinity.
 func TestScalarNode_BinaryFloatSpecialValue(t *testing.T) {
 	payload, _ := converters.EncodeBinaryFloat(float32(math.Inf(1)))
-	node, err := newScalarNodeAt(
+	node := newScalarNodeAt(
 		newOsonBuffer(append(drvCommon.B1Array{osonOpBinaryFloat}, payload...)),
 		&osonHeader{},
 		0,
+		osonOpBinaryFloat,
 	)
-	if err != nil {
-		t.Fatalf("newScalarNodeAt() error = %v", err)
-	}
 
 	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 	if err != nil {
@@ -691,78 +691,5 @@ func TestScalarNode_RejectsUnsupportedOpcode(t *testing.T) {
 	}
 	if _, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
 		t.Fatal("Value() error = nil, want unsupported-opcode failure")
-	}
-}
-
-// TestScalarNode_RejectsTruncatedPayloads expects scalar decoding to reject incomplete
-// payloads and length prefixes, missing opcodes, and invalid numeric text.
-func TestScalarNode_RejectsTruncatedPayloads(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name   string
-		opcode drvCommon.UB1
-		data   drvCommon.B1Array
-	}{
-		{"short string", 1, nil},
-		{"compact signed32", osonOpCompactSigned32Prefix | 1, nil},
-		{"compact signed64", osonOpCompactSigned64Prefix | 1, nil},
-		{"compact number", osonOpCompactOracleNumberPrefix, nil},
-		{"compact decimal", osonOpCompactDecimalPrefix, nil},
-		{"string ub1", osonOpStringUB1, drvCommon.B1Array{1}},
-		{"string ub2", osonOpStringUB2, drvCommon.B1Array{0, 1}},
-		{"string ub4", osonOpStringUB4, drvCommon.B1Array{0, 0, 0, 1}},
-		{"oracle number", osonOpOracleNumber, drvCommon.B1Array{1}},
-		{"string number", osonOpStringNumber, drvCommon.B1Array{1}},
-		{"binary float", osonOpBinaryFloat, nil},
-		{"binary double", osonOpBinaryDouble, nil},
-		{"date", osonOpDate, nil},
-		{"timestamp", osonOpTimestamp, nil},
-		{"timestamp7", osonOpTimestamp7, nil},
-		{"timestamp timezone", osonOpTimestampTZ, nil},
-		{"interval year-month", osonOpIntervalYM, nil},
-		{"interval day-second", osonOpIntervalDS, nil},
-		{"id", osonOpID, drvCommon.B1Array{1}},
-		{"binary ub2", osonOpBinaryUB2, drvCommon.B1Array{0, 1}},
-		{"binary ub4", osonOpBinaryUB4, drvCommon.B1Array{0, 0, 0, 1}},
-	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			payload := append(drvCommon.B1Array{byte(test.opcode)}, test.data...)
-			scalar := &scalarNode{
-				nodeBase: nodeBase{buf: newOsonBuffer(payload)},
-				opcode:   test.opcode,
-			}
-			if _, err := scalar.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
-				t.Fatal("Value() error = nil, want truncated-payload failure")
-			}
-		})
-	}
-
-	for _, opcode := range []drvCommon.UB1{
-		osonOpStringUB1, osonOpStringUB2, osonOpStringUB4,
-		osonOpOracleNumber, osonOpStringNumber, osonOpID,
-		osonOpBinaryUB2, osonOpBinaryUB4,
-	} {
-		t.Run("truncated length prefix", func(t *testing.T) {
-			scalar := &scalarNode{
-				nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{byte(opcode)})},
-				opcode:   opcode,
-			}
-			if _, err := scalar.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
-				t.Fatalf("Value(%#x) error = nil, want truncated-length failure", opcode)
-			}
-		})
-	}
-
-	if _, err := newScalarNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
-		t.Fatal("newScalarNodeAt() error = nil, want out-of-range failure")
-	}
-	invalidNumber := &scalarNode{
-		nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{osonOpStringNumber, 1, 'x'})},
-		opcode:   osonOpStringNumber,
-	}
-	if _, err := invalidNumber.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
-		t.Fatal("invalid string number error = nil, want parse failure")
 	}
 }

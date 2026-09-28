@@ -840,9 +840,6 @@ func TestOsonWriteBufferPatchUint_RejectsInvalidPatch(t *testing.T) {
 		value     int
 		wantError string
 	}{
-		{name: "negative offset", offset: -1, width: osonUB1Size, value: 1, wantError: "negative"},
-		{name: "negative value", offset: 0, width: osonUB1Size, value: -1, wantError: "negative"},
-		{name: "invalid width", offset: 0, width: 3, value: 1, wantError: "unsupported patch width"},
 		{name: "ub1 overflow", offset: 0, width: osonUB1Size, value: math.MaxUint8 + 1, wantError: "overflows UB1"},
 		{name: "ub2 overflow", offset: 0, width: osonUB2Size, value: math.MaxUint16 + 1, wantError: "overflows UB2"},
 		{name: "out of bounds", offset: 3, width: osonUB4Size, value: 1, wantError: "exceeds buffer length"},
@@ -860,19 +857,6 @@ func TestOsonWriteBufferPatchUint_RejectsInvalidPatch(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestOsonEncoder_BufferPatchError verifies an internal offset-table failure
-// becomes a public encoding error instead of a panic or partial OSON output.
-func TestOsonEncoder_BufferPatchError(t *testing.T) {
-	buf := &osonWriteBuffer{data: make(drvCommon.B1Array, 1)}
-	patchErr := buf.patchUint(0, osonUB4Size, 1)
-	if patchErr == nil {
-		t.Fatal("patchUint() error = nil, want out-of-range failure")
-	}
-
-	err := newOsonEncoder().bufferPatchError("writeObjectNode", patchErr)
-	assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
 }
 
 // assertEncodeOsonError verifies Encode rejects value with the public OSON

@@ -46,20 +46,6 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestNewNodeAt_RejectsMissingContext verifies node construction fails when either the buffer or parsed header is missing.
-func TestNewNodeAt_RejectsMissingContext(t *testing.T) {
-	if _, err := newNodeAt(nil, &osonHeader{}, 0); err == nil {
-		t.Fatal("newNodeAt(nil buffer) error = nil, want failure")
-	} else {
-		assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
-	}
-	if _, err := newNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpTrue}), nil, 0); err == nil {
-		t.Fatal("newNodeAt(nil header) error = nil, want failure")
-	} else {
-		assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
-	}
-}
-
 // TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles verifies forwarding is
 // resolved until a concrete node is reached and cannot loop indefinitely.
 func TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles(t *testing.T) {
@@ -156,9 +142,7 @@ func TestNodeOffsets_CoverAddressWidths(t *testing.T) {
 	if got, err := readChildOffsetAt(buffer, header, 30, 8, osonUB4Size); err != nil || got != 14 {
 		t.Fatalf("relative UB4 offset = %d, %v; want 14, nil", got, err)
 	}
-	if _, err := readRelativeChildOffset(buffer, 0, 3); err == nil {
-		t.Fatal("readRelativeChildOffset() error = nil, want unsupported-width failure")
-	}
+
 }
 
 // TestParse_RejectsOutOfRangeRelativeChildOffset verifies a relative offset
@@ -293,7 +277,7 @@ func TestParse_RejectsForwardingCycle(t *testing.T) {
 }
 
 // TestNode_ReadHelpersRejectMalformedInput expects container-count and child-offset
-// readers to return errors for truncated input and unsupported encodings or widths.
+// readers to return errors for truncated input and unsupported count encodings.
 func TestNode_ReadHelpersRejectMalformedInput(t *testing.T) {
 	t.Parallel()
 
@@ -317,12 +301,7 @@ func TestNode_ReadHelpersRejectMalformedInput(t *testing.T) {
 			t.Fatalf("readChildOffsetAt(width=%d) error = nil, want truncation", width)
 		}
 	}
-	if _, err := readChildOffsetAt(buf, header, 0, 0, 1); err == nil {
-		t.Fatal("readChildOffsetAt(width=1) error = nil, want unsupported width")
-	}
-	if _, err := readRelativeChildOffset(buf, 0, 1); err == nil {
-		t.Fatal("readRelativeChildOffset(width=1) error = nil, want unsupported width")
-	}
+
 }
 
 // TestNode_RedirectReadsRejectTruncatedPayloads expects inline redirects to return

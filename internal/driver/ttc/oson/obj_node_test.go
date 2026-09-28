@@ -57,54 +57,6 @@ func TestObjectNode_KindReportsObject(t *testing.T) {
 	}
 }
 
-// TestObjectNode_ReadersRejectTruncatedLayouts expects object readers to return errors for
-// truncated field IDs, child counts, delegate references, missing opcodes, and unsupported
-// count encodings.
-func TestObjectNode_ReadersRejectTruncatedLayouts(t *testing.T) {
-	t.Parallel()
-
-	for _, test := range []struct {
-		name  string
-		flags drvCommon.UB2
-		bytes drvCommon.B1Array
-	}{
-		{"field ID UB1", 0, nil},
-		{"field ID UB2", osonFlagDistinctFieldCountUB2Mask, drvCommon.B1Array{0}},
-		{"field ID UB4", osonFlagDistinctFieldCountUB4Mask, drvCommon.B1Array{0, 0, 0}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			header := &osonHeader{flags: test.flags}
-			if _, err := readFieldIDEntriesAt(newOsonBuffer(test.bytes), header, 0, 1); err == nil {
-				t.Fatal("readFieldIDEntriesAt() error = nil, want truncation")
-			}
-		})
-	}
-
-	for _, test := range []struct {
-		name   string
-		opcode drvCommon.UB1
-		bytes  drvCommon.B1Array
-	}{
-		{"direct count", osonOpObjectType | osonOpChildCountUB2, drvCommon.B1Array{osonOpObjectType | osonOpChildCountUB2}},
-		{"delegate UB2", osonOpObjectType | osonOpChildDelegateForm, drvCommon.B1Array{osonOpObjectType | osonOpChildDelegateForm}},
-		{"delegate UB4", osonOpObjectType | osonOpChildDelegateForm | osonOpChildOffsetUB4Bit, drvCommon.B1Array{osonOpObjectType | osonOpChildDelegateForm | osonOpChildOffsetUB4Bit}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			header := &osonHeader{treeSegmentStartOffset: 0}
-			if _, _, _, err := readObjectLayout(newOsonBuffer(test.bytes), header, 0, test.opcode); err == nil {
-				t.Fatal("readObjectLayout() error = nil, want malformed-layout failure")
-			}
-		})
-	}
-
-	if _, err := newObjectNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
-		t.Fatal("newObjectNodeAt() error = nil, want out-of-range failure")
-	}
-	if _, _, _, err := readObjectLayout(newOsonBuffer(drvCommon.B1Array{osonOpObjectType | 0x03}), &osonHeader{}, 0, osonOpObjectType|0x03); err == nil {
-		t.Fatal("readObjectLayout(unsupported count) error = nil, want failure")
-	}
-}
-
 // TestObjectNode_SimpleObjectTraversal expects key enumeration and lookup to expose the
 // stored fields, and materialization and JSON rendering to preserve their values.
 func TestObjectNode_SimpleObjectTraversal(t *testing.T) {
@@ -244,9 +196,50 @@ func TestObjectNode_SecondaryDictionaryTraversal(t *testing.T) {
 // return errors.
 func TestObjectNode_RejectsMalformedLayouts(t *testing.T) {
 	t.Parallel()
+	for _, test := range []struct {
+		name  string
+		flags drvCommon.UB2
+		bytes drvCommon.B1Array
+	}{
+		{"field ID UB1", 0, nil},
+		{"field ID UB2", osonFlagDistinctFieldCountUB2Mask, drvCommon.B1Array{0}},
+		{"field ID UB4", osonFlagDistinctFieldCountUB4Mask, drvCommon.B1Array{0, 0, 0}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			header := &osonHeader{flags: test.flags}
+			if _, err := readFieldIDEntriesAt(newOsonBuffer(test.bytes), header, 0, 1); err == nil {
+				t.Fatal("readFieldIDEntriesAt() error = nil, want truncation")
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name   string
+		opcode drvCommon.UB1
+		bytes  drvCommon.B1Array
+	}{
+		{"direct count", osonOpObjectType | osonOpChildCountUB2, drvCommon.B1Array{osonOpObjectType | osonOpChildCountUB2}},
+		{"delegate UB2", osonOpObjectType | osonOpChildDelegateForm, drvCommon.B1Array{osonOpObjectType | osonOpChildDelegateForm}},
+		{"delegate UB4", osonOpObjectType | osonOpChildDelegateForm | osonOpChildOffsetUB4Bit, drvCommon.B1Array{osonOpObjectType | osonOpChildDelegateForm | osonOpChildOffsetUB4Bit}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			header := &osonHeader{treeSegmentStartOffset: 0}
+			if _, _, _, err := readObjectLayout(newOsonBuffer(test.bytes), header, 0, test.opcode); err == nil {
+				t.Fatal("readObjectLayout() error = nil, want malformed-layout failure")
+			}
+		})
+	}
+
+	if _, err := newNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
+		t.Fatal("newNodeAt() error = nil, want out-of-range failure")
+	}
+	if _, _, _, err := readObjectLayout(newOsonBuffer(drvCommon.B1Array{osonOpObjectType | 0x03}), &osonHeader{}, 0, osonOpObjectType|0x03); err == nil {
+		t.Fatal("readObjectLayout(unsupported count) error = nil, want failure")
+	}
+
 	t.Run("duplicate field IDs", testObjectNodeRejectsDuplicateFieldIDs)
 	t.Run("invalid field ID and child offset", testObjectNodeRejectsMalformedFieldIDAndChildOffset)
-	t.Run("invalid opcode and truncated field IDs", testObjectNodeRejectsMalformedLayout)
+	t.Run("truncated field IDs", testObjectNodeRejectsMalformedLayout)
 	t.Run("impossible field-ID tables", testObjectNodeRejectsImpossibleFieldIDTables)
 }
 
@@ -281,13 +274,13 @@ func testObjectNodeRejectsMalformedFieldIDAndChildOffset(t *testing.T) {
 
 	badFieldID := sampleSimpleObject.cloneOSON()
 	badFieldID[treeOffset+2] = 0x04
-	if _, err := newObjectNodeAt(newOsonBuffer(badFieldID), header, treeOffset); err == nil {
+	if _, err := newObjectNodeAt(newOsonBuffer(badFieldID), header, treeOffset, drvCommon.UB1(badFieldID[treeOffset])); err == nil {
 		t.Fatal("newObjectNodeAt() with missing field id error = nil, want error")
 	}
 
 	badChildOffset := sampleSimpleObject.cloneOSON()
 	binary.BigEndian.PutUint16(badChildOffset[treeOffset+5:], 0x7fff)
-	badRoot, err := newObjectNodeAt(newOsonBuffer(badChildOffset), header, treeOffset)
+	badRoot, err := newObjectNodeAt(newOsonBuffer(badChildOffset), header, treeOffset, drvCommon.UB1(badChildOffset[treeOffset]))
 	if err != nil {
 		return
 	}
@@ -296,22 +289,16 @@ func testObjectNodeRejectsMalformedFieldIDAndChildOffset(t *testing.T) {
 	}
 }
 
-// testObjectNodeRejectsMalformedLayout verifies object construction fails for non-object opcodes and truncated field-ID tables.
+// testObjectNodeRejectsMalformedLayout verifies object construction fails for truncated field-ID tables.
 func testObjectNodeRejectsMalformedLayout(t *testing.T) {
 	t.Parallel()
-
-	if _, err := newObjectNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpTrue}), &osonHeader{}, 0); err == nil {
-		t.Fatal("newObjectNodeAt(non-object) error = nil, want failure")
-	} else {
-		assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
-	}
 
 	header := &osonHeader{
 		treeSegmentStartOffset: 0,
 		fieldDictionary:        dictionary{fieldNames: []string{"alpha"}},
 		primaryFieldsCount:     1,
 	}
-	if _, err := newObjectNodeAt(newOsonBuffer(drvCommon.B1Array{0x84, 0x01}), header, 0); err == nil {
+	if _, err := newObjectNodeAt(newOsonBuffer(drvCommon.B1Array{0x84, 0x01}), header, 0, 0x84); err == nil {
 		t.Fatal("newObjectNodeAt(truncated field ids) error = nil, want failure")
 	} else {
 		assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)

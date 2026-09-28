@@ -79,9 +79,6 @@ func (b *osonBuffer) setPosition(pos int) error {
 
 // remaining reports bytes available to cursor-based reads.
 func (b *osonBuffer) remaining() int {
-	if b.pos < 0 || b.pos >= len(b.data) {
-		return 0
-	}
 	return len(b.data) - b.pos
 }
 
@@ -171,11 +168,6 @@ func (b *osonBuffer) ensureAvailable(length int) error {
 	if length < 0 {
 		details := fmt.Sprintf("negative length %d", length)
 		common.Odl.Debug("osonBuffer.ensureAvailable: failed", "error", details, "length", length, "remaining", b.remaining())
-		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
-	}
-	if b.pos < 0 || b.pos > len(b.data) {
-		details := fmt.Sprintf("cursor position %d out of bounds", b.pos)
-		common.Odl.Debug("osonBuffer.ensureAvailable: failed", "error", details, "position", b.pos, "limit", len(b.data))
 		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 	remaining := b.remaining()

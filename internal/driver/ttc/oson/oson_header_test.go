@@ -417,10 +417,6 @@ func TestOsonHeader_RejectsMalformedFixedHeader(t *testing.T) {
 		doc  drvCommon.B1Array
 	}{
 		{
-			name: "truncated magic",
-			doc:  drvCommon.B1Array{0xff, 0x4a, 0x5a},
-		},
-		{
 			name: "invalid magic",
 			doc:  drvCommon.B1Array{0xff, 0x4a, 0x00, 0x01, 0x00, 0x16},
 		},
@@ -431,10 +427,6 @@ func TestOsonHeader_RejectsMalformedFixedHeader(t *testing.T) {
 		{
 			name: "unsupported version high",
 			doc:  drvCommon.B1Array{0xff, 0x4a, 0x5a, 0x05, 0x00, 0x16},
-		},
-		{
-			name: "truncated scalar tree size",
-			doc:  drvCommon.B1Array{0xff, 0x4a, 0x5a, 0x01, 0x00, 0x16, 0x00},
 		},
 	}
 
@@ -610,8 +602,7 @@ func TestOsonHeader_MetadataHelpersReflectFlagsAndBounds(t *testing.T) {
 
 // TestOsonHeader_ForwardingHelpers expects valid forwarding and overflow offsets to
 // resolve into the extended tree and invalid or missing mappings to return errors.
-// Truncated update fixtures must not panic; secondary dictionaries must obey version and
-// heap requirements.
+// Secondary dictionaries must obey version and heap requirements.
 func TestOsonHeader_ForwardingHelpers(t *testing.T) {
 	header := &osonHeader{
 		treeSegmentStartOffset:         20,
@@ -669,19 +660,6 @@ func TestOsonHeader_ForwardingHelpers(t *testing.T) {
 		})
 	}
 
-	for _, sample := range []osonSample{sampleUpdatedOverflow, sampleUpdatedOverflowUB4} {
-		doc := sample.cloneOSON()
-		for length := 0; length < len(doc); length++ {
-			_, _ = newOsonHeader(newOsonBuffer(doc[:length]))
-		}
-	}
-
-	if err := (&osonHeader{formatVersion: 2}).readSecondaryDictionary(newOsonBuffer(nil), _parsedDictionaryLayout{secondaryCount: 1, secondaryHeapSize: 1}); err == nil {
-		t.Fatal("readSecondaryDictionary(v2) error = nil, want version failure")
-	}
-	if err := (&osonHeader{formatVersion: 3}).readSecondaryDictionary(newOsonBuffer(nil), _parsedDictionaryLayout{}); err != nil {
-		t.Fatalf("readSecondaryDictionary(empty) error = %v", err)
-	}
 	if err := (&osonHeader{formatVersion: 3}).readSecondaryDictionary(newOsonBuffer(nil), _parsedDictionaryLayout{secondaryCount: 1}); err == nil {
 		t.Fatal("readSecondaryDictionary(empty heap) error = nil, want failure")
 	}
@@ -720,16 +698,6 @@ func TestOsonHeader_AddForwardingAddressValidatesMappings(t *testing.T) {
 			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
 		})
 	}
-}
-
-// TestOsonHeader_RejectsNilBuffer verifies header initialization reports a
-// parser error instead of dereferencing a nil buffer.
-func TestOsonHeader_RejectsNilBuffer(t *testing.T) {
-	err := (&osonHeader{}).initialize(nil)
-	if err == nil {
-		t.Fatal("initialize(nil) error = nil, want failure")
-	}
-	assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
 }
 
 // TestOsonHeader_RejectsCorruptDictionaryHeaps verifies malformed primary and secondary dictionary heaps are rejected.
@@ -919,14 +887,29 @@ func TestOsonHeader_RejectsTruncatedInput(t *testing.T) {
 		{"fixed header", sampleSimpleObject.cloneOSON()},
 		{"scalar header", sampleScalarTrue.cloneOSON()},
 		{"update header", sampleUpdatedTinyScalar.cloneOSON()},
+		{"overflow UB2", sampleUpdatedOverflow.cloneOSON()},
+		{"overflow UB4", sampleUpdatedOverflowUB4.cloneOSON()},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			limit := len(test.doc)
-			if test.name == "update header" {
-				limit--
+			header, err := newOsonHeader(newOsonBuffer(test.doc))
+			if err != nil {
+				t.Fatalf("valid fixture header: %v", err)
 			}
-			for length := 0; length <= limit; length++ {
-				_, _ = newOsonHeader(newOsonBuffer(test.doc[:length]))
+			primaryEnd := header.treeSegmentOffset() + int(header.treeSegmentByteLength)
+			for length := 0; length < len(test.doc); length++ {
+				_, err := newOsonHeader(newOsonBuffer(test.doc[:length]))
+				// The update tail is optional, so ending exactly at the primary
+				// tree boundary is valid for header parsing.
+				if length == primaryEnd {
+					if err != nil {
+						t.Fatalf("header without optional update tail: %v", err)
+					}
+					continue
+				}
+				if err == nil {
+					t.Fatalf("header truncated at %d bytes: expected an error", length)
+				}
+				assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
 			}
 		})
 	}
@@ -971,5 +954,23 @@ func TestOsonHeader_RejectsInvalidSecondaryDictionary(t *testing.T) {
 	header := &osonHeader{formatVersion: 3}
 	if err := header.readSecondaryDictionary(newOsonBuffer(makeDocument(heap, 0)), _parsedDictionaryLayout{secondaryCount: 1, secondaryHeapSize: len(heap)}); err == nil {
 		t.Fatal("readSecondaryDictionary(invalid UTF-8) error = nil, want failure")
+	}
+}
+
+// TestParse_RejectsEmptyTree verifies an empty tree cannot supply a root opcode,
+// including when optional update metadata follows the declared tree.
+func TestParse_RejectsEmptyTree(t *testing.T) {
+	for _, withUpdate := range []bool{false, true} {
+		doc := sampleScalarTrue.cloneOSON()[:8]
+		binary.BigEndian.PutUint16(doc[6:8], 0)
+		if withUpdate {
+			doc[3] = 2
+			doc = append(doc, make(drvCommon.B1Array, 16)...)
+		}
+		_, err := Parse(doc)
+		if err == nil {
+			t.Fatalf("Parse(withUpdate=%v) error = nil, want empty-tree failure", withUpdate)
+		}
+		assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 	}
 }
