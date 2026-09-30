@@ -452,15 +452,6 @@ type keywordValuePairWithName struct {
 	binaryValue dynamicAllocatedArray
 }
 
-// DTYKVE field limits. Callers validate these limits before constructing a
-// keywordValuePairWithName.
-const (
-	// maximum length of a key name
-	maxKPDKVEKeyLength = 128
-	// maximum length of a key value
-	maxKPDKVEValueLength = 64 * 1024
-)
-
 // newKeywordValuePairWithName creates a DTYKVE keyword/value pair with name.
 // key, textValue, and binaryValue are converted to byte arrays. The caller is
 // responsible for validating the DTYKVE field limits before calling this
