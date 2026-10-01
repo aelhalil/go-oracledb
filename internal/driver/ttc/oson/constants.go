@@ -259,6 +259,10 @@ const (
 	osonOpUpdateForwardUB4 = 0x77
 	// Reserved update value.
 	osonOpUpdateOversizeReserved = 0x78
+	// Native integer extension.
+	osonOpNativeInteger = 0x79
+	// Extended binary scalar.
+	osonOpExtendedBinary = 0x7b
 	// TIMESTAMP WITH TIME ZONE.
 	osonOpTimestampTZ = 0x7c
 	// Compact 7-byte TIMESTAMP.

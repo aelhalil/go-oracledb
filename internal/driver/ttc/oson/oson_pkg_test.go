@@ -140,6 +140,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestScalarNode_MalformedScalarPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_MalformedScalarPayloads},
 	{Name: "TestScalarNode_BinaryFloatSpecialValue", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_BinaryFloatSpecialValue},
 	{Name: "TestScalarNode_IDReadsFullUB1Length", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_IDReadsFullUB1Length},
+	{Name: "TestScalarNode_RejectsUnknownOpcode", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsUnknownOpcode},
 	{Name: "TestOsonHeader_RejectsTruncatedInput", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsTruncatedInput},
 	{Name: "TestOsonHeader_RejectsInvalidSecondaryDictionary", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsInvalidSecondaryDictionary},
 	{Name: "TestNode_ReadHelpersRejectMalformedInput", Categories: "unitary", Exclusive: false, Fn: TestNode_ReadHelpersRejectMalformedInput},

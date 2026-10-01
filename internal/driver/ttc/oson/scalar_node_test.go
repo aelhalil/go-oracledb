@@ -576,17 +576,22 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 		{
 			name:    "reserved update opcode",
 			payload: drvCommon.B1Array{osonOpUpdateOversizeReserved},
+			want:    oracleErrors.OsonParsingError,
+		},
+		{
+			name:    "known native integer opcode not implemented",
+			payload: drvCommon.B1Array{osonOpNativeInteger, 0x01, 0x01},
 			want:    oracleErrors.OsonUnsupportedScalarError,
 		},
 		{
-			name:    "unknown scalar opcode",
-			payload: drvCommon.B1Array{0x79},
+			name:    "known extended binary opcode not implemented",
+			payload: drvCommon.B1Array{osonOpExtendedBinary, 0x01, 0x00, 0x00, 0x00, 0x00},
 			want:    oracleErrors.OsonUnsupportedScalarError,
 		},
 		{
-			name:    "unsupported extended binary opcode",
-			payload: drvCommon.B1Array{0x7b},
-			want:    oracleErrors.OsonUnsupportedScalarError,
+			name:    "reserved scalar opcode",
+			payload: drvCommon.B1Array{0x7a},
+			want:    oracleErrors.OsonParsingError,
 		},
 		{name: "truncated short string payload", payload: drvCommon.B1Array{1}, want: oracleErrors.OsonBufferError},
 		{name: "truncated compact signed32 payload", payload: drvCommon.B1Array{osonOpCompactSigned32Prefix | 1}, want: oracleErrors.OsonBufferError},
@@ -682,14 +687,16 @@ func TestScalarNode_BinaryFloatSpecialValue(t *testing.T) {
 	}
 }
 
-// TestScalarNode_RejectsUnsupportedOpcode verifies unknown scalar opcodes are
-// rejected without attempting to interpret their payload.
-func TestScalarNode_RejectsUnsupportedOpcode(t *testing.T) {
+// TestScalarNode_RejectsUnknownOpcode verifies unknown scalar opcodes return a
+// parsing error without attempting to interpret their payload.
+func TestScalarNode_RejectsUnknownOpcode(t *testing.T) {
 	node := &scalarNode{
-		nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{0x7f})},
-		opcode:   0x7f,
+		nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{0x7a})},
+		opcode:   0x7a,
 	}
-	if _, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64}); err == nil {
-		t.Fatal("Value() error = nil, want unsupported-opcode failure")
+	_, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
+	if err == nil {
+		t.Fatal("Value() error = nil, want unknown-opcode failure")
 	}
+	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 }

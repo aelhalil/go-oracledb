@@ -518,9 +518,14 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 			"payloadLen", len(raw))
 		return append([]byte(nil), raw...), nil
 
-	default:
-		cause := fmt.Errorf("opcode 0x%02x does not match a supported OSON scalar encoding", opcode)
+	case opcode == osonOpNativeInteger || opcode == osonOpExtendedBinary:
+		cause := fmt.Errorf("opcode 0x%02x is a recognized OSON scalar encoding that the driver does not implement", opcode)
 		return nil, common.NewOracleError(oracleErrors.OsonUnsupportedScalarError, cause, opcode)
+
+	default:
+		details := fmt.Sprintf("unknown OSON scalar opcode 0x%02x", opcode)
+		cause := fmt.Errorf("opcode 0x%02x is not a recognized OSON scalar encoding", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause, details)
 	}
 }
 
