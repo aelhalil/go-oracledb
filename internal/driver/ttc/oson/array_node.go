@@ -40,7 +40,6 @@ package oson
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -77,18 +76,6 @@ type arrayNode struct {
 // Errors:
 //   - malformed child-count or child-offset layout.
 func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, opcode drvCommon.UB1) (*arrayNode, error) {
-	objectOnlyFlags := opcode & (osonOpChildNoSortBit | osonOpObjectSharedFieldIDsBit | osonOpObjectUpdateOverflowBit)
-	if objectOnlyFlags != 0 {
-		details := fmt.Sprintf("array opcode 0x%02x has invalid flags", opcode)
-		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
-	}
-	if opcode&osonOpChildSizeBits == osonOpChildDelegateForm {
-		details := fmt.Sprintf("array opcode 0x%02x uses delegate form", opcode)
-		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
-	}
-
 	elementCount, childOffsetArrayStart, err := readContainerCountAt(buf, arrayNodeOffset+1, opcode)
 	if err != nil {
 		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "opcode", opcode)

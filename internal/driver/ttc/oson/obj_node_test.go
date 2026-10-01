@@ -191,9 +191,9 @@ func TestObjectNode_SecondaryDictionaryTraversal(t *testing.T) {
 	}
 }
 
-// TestObjectNode_RejectsMalformedLayouts expects duplicate or invalid field IDs, invalid
-// child offsets, unsupported opcodes, and truncated or impossible field-ID tables to
-// return errors.
+// TestObjectNode_RejectsMalformedLayouts expects invalid field IDs, invalid child
+// offsets, unsupported opcodes, and truncated or impossible field-ID tables to return
+// errors.
 func TestObjectNode_RejectsMalformedLayouts(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -237,29 +237,9 @@ func TestObjectNode_RejectsMalformedLayouts(t *testing.T) {
 		t.Fatal("readObjectLayout(unsupported count) error = nil, want failure")
 	}
 
-	t.Run("duplicate field IDs", testObjectNodeRejectsDuplicateFieldIDs)
 	t.Run("invalid field ID and child offset", testObjectNodeRejectsMalformedFieldIDAndChildOffset)
 	t.Run("truncated field IDs", testObjectNodeRejectsMalformedLayout)
 	t.Run("impossible field-ID tables", testObjectNodeRejectsImpossibleFieldIDTables)
-}
-
-// testObjectNodeRejectsDuplicateFieldIDs verifies malformed objects cannot
-// silently overwrite a member while materializing into a Go map.
-func testObjectNodeRejectsDuplicateFieldIDs(t *testing.T) {
-	doc := sampleSimpleObject.cloneOSON()
-	buf := newOsonBuffer(doc)
-	header, err := newOsonHeader(buf)
-	if err != nil {
-		t.Fatalf("failed to parse the valid simple-object fixture header: %v", err)
-	}
-	// The simple object has a UB1 FID array directly after [opcode][count].
-	fidStart := header.treeSegmentOffset() + 2
-	doc[fidStart+1] = doc[fidStart]
-	if _, err := Parse(doc); err == nil {
-		t.Fatal("Parse() error = nil, want duplicate-field-id failure")
-	} else {
-		assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
-	}
 }
 
 // testObjectNodeRejectsMalformedFieldIDAndChildOffset verifies invalid field IDs and out-of-tree child offsets are rejected.

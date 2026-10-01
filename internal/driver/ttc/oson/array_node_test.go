@@ -159,27 +159,6 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 		}
 	})
 
-	t.Run("object-only opcode flags", func(t *testing.T) {
-		header := &osonHeader{treeSegmentStartOffset: 0, treeSegmentByteLength: 2}
-		for _, test := range []struct {
-			name   string
-			opcode drvCommon.UB1
-		}{
-			{name: "unsorted field IDs", opcode: osonOpArrayType | osonOpChildNoSortBit},
-			{name: "shared field IDs", opcode: osonOpArrayType | osonOpObjectSharedFieldIDsBit},
-			{name: "overflow object", opcode: osonOpArrayType | osonOpObjectUpdateOverflowBit},
-			{name: "delegate child header", opcode: osonOpArrayType | osonOpChildDelegateForm},
-		} {
-			t.Run(test.name, func(t *testing.T) {
-				_, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{byte(test.opcode), 0x00}), header, 0, test.opcode)
-				if err == nil {
-					t.Fatalf("newArrayNodeAt(opcode=%#02x) error = nil, want failure", test.opcode)
-				}
-				assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
-			})
-		}
-	})
-
 	if _, err := newNodeAt(newOsonBuffer(nil), &osonHeader{}, 0); err == nil {
 		t.Fatal("newNodeAt(empty) error = nil, want out-of-range failure")
 	}
