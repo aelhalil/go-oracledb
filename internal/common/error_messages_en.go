@@ -606,11 +606,6 @@ func initMessagesEn() {
 	// Comment:  Arg[0]: source type.
 	message.SetString(language.English, string(oracleErrors.JSONScanTypeUnsupportedError), "oracle/json cannot scan %s")
 	// Document: No
-	// Cause:    The caller requested a JSON wrapper that does not match the value kind.
-	// Action:   Inspect the JSON kind before requesting an object, array, or scalar wrapper.
-	// Comment:  Arg[0]: actual kind; Arg[1]: requested kind.
-	message.SetString(language.English, string(oracleErrors.JSONKindMismatchError), "oracle/json value is %s, not %s")
-	// Document: No
 	// Cause:    The caller requested an array element outside the valid bounds.
 	// Action:   Validate the index against the array length before reading.
 	// Comment:  Arg[0]: array index.

@@ -249,20 +249,18 @@ const (
 	JSONNilReceiver ErrorCode = "OGD-00303"
 	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/json does not accept.
 	JSONScanTypeUnsupportedError ErrorCode = "OGD-00304"
-	// JSONKindMismatchError indicates the caller requested the wrong high-level JSON wrapper for the value kind.
-	JSONKindMismatchError ErrorCode = "OGD-00305"
 	// JSONArrayIndexOutOfRangeError indicates array element lookup used an invalid index.
-	JSONArrayIndexOutOfRangeError ErrorCode = "OGD-00306"
+	JSONArrayIndexOutOfRangeError ErrorCode = "OGD-00305"
 	// OsonEncodingError indicates that a value or internal encoder state cannot
 	// be converted into an OSON document.
-	OsonEncodingError ErrorCode = "OGD-00307"
+	OsonEncodingError ErrorCode = "OGD-00306"
 	// OsonUnsupportedScalarError indicates that an OSON document contains a
 	// scalar opcode the driver does not support.
-	OsonUnsupportedScalarError ErrorCode = "OGD-00308"
+	OsonUnsupportedScalarError ErrorCode = "OGD-00307"
 	// JSONAccessError indicates a JSON access request used an invalid access path or mode.
-	JSONAccessError ErrorCode = "OGD-00309"
+	JSONAccessError ErrorCode = "OGD-00308"
 	// JSONRenderingError indicates an Oracle JSON value could not be rendered as JSON text.
-	JSONRenderingError ErrorCode = "OGD-00310"
+	JSONRenderingError ErrorCode = "OGD-00309"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error
