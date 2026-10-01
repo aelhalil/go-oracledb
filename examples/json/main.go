@@ -48,7 +48,7 @@ import (
 	"time"
 
 	_ "github.com/oracle/go-oracledb/v26/oracle"
-	ojson "github.com/oracle/go-oracledb/v26/oracle/json"
+	ojson "github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 )
 
 func main() {

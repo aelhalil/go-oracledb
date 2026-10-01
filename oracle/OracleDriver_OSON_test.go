@@ -42,7 +42,7 @@ import (
 	"testing"
 	"time"
 
-	ojson "github.com/oracle/go-oracledb/v26/oracle/json"
+	ojson "github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 )
 
 // TestDriver_OSON_RebindFetchedDocument verifies a document fetched from a

@@ -47,7 +47,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
-	"github.com/oracle/go-oracledb/v26/oracle/json"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 )
 
 // Test_defaultNumericValue verifies numeric defaults for NULL values across

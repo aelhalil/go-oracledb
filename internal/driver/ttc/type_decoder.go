@@ -48,8 +48,8 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/oson"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
-	"github.com/oracle/go-oracledb/v26/oracle/json"
 )
 
 const (
