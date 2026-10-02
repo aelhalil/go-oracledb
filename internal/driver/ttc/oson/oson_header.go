@@ -588,12 +588,6 @@ func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (drvCommon.UB4, error)
 //   - Returns common.OsonHeaderError for truncated arrays, invalid offsets, or malformed heap entries.
 func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictionaryLayout) error {
 	count := layout.primaryCount
-	// A non-empty dictionary with an empty heap is structurally invalid.
-	if layout.primaryHeapSize == 0 {
-		cause := fmt.Errorf("primary dictionary declares %d fields but its heap size is zero", count)
-		common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "error", cause)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-	}
 
 	hashIDs, err := h.readPrimaryHashes(buf, count)
 	if err != nil {
@@ -622,22 +616,11 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 	names := make([]string, count)
 	for i := 0; i < count; i++ {
 		offset := offsets[i]
-		// Offsets are relative to the start of the heap, not the document.
-		if offset < 0 || offset >= len(heap) {
-			cause := fmt.Errorf("offset %d outside heap (%d)", offset, len(heap))
-			common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "error", cause, "offset", offset, "heapSize", len(heap))
-			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-		}
 		entry := heap[offset:]
 
 		// Primary dictionary entries use a single-byte length prefix.
 		length := int(entry[0])
 		entry = entry[1:]
-		if length > len(entry) {
-			cause := fmt.Errorf("primary dictionary entry at offset %d declares %d bytes but only %d remain", offset, length, len(entry))
-			common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "error", cause, "offset", offset, "length", length, "remaining", len(entry))
-			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-		}
 		nameBytes := entry[:length]
 		if !utf8.Valid(nameBytes) {
 			cause := fmt.Errorf("primary dictionary entry at offset %d contains invalid UTF-8 in its %d-byte name", offset, length)
@@ -672,12 +655,6 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 //     invalid offsets, or malformed long-key heap entries.
 func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDictionaryLayout) error {
 	count := layout.secondaryCount
-	// A declared long-key dictionary must have heap bytes to decode names from.
-	if layout.secondaryHeapSize == 0 {
-		cause := fmt.Errorf("secondary dictionary declares %d fields but its heap size is zero", count)
-		common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "error", cause)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-	}
 
 	hashIDs, err := h.readSecondaryHashes(buf, count)
 	if err != nil {
@@ -706,33 +683,11 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 	names := make([]string, count)
 	for i := 0; i < count; i++ {
 		offset := offsets[i]
-		// Offsets are relative to the start of the secondary heap.
-		if offset < 0 || offset >= len(heap) {
-			cause := fmt.Errorf("offset %d outside heap (%d)", offset, len(heap))
-			common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "error", cause, "offset", offset, "heapSize", len(heap))
-			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-		}
 		entry := heap[offset:]
-		if len(entry) < osonUB2Size {
-			cause := fmt.Errorf("secondary dictionary entry at offset %d has %d bytes, need %d for its length", offset, len(entry), osonUB2Size)
-			common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "error", cause, "offset", offset)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-		}
 		// Secondary dictionary entries use a big-endian 2-byte length prefix.
 		length := int(binary.BigEndian.Uint16(entry[:osonUB2Size]))
 		entry = entry[osonUB2Size:]
 
-		// Secondary entries must be strictly longer than the primary-tier limit.
-		if length <= osonMaxPrimaryDictKeyLength {
-			cause := fmt.Errorf("secondary dictionary entry at %d has invalid length %d", offset, length)
-			common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "error", cause, "offset", offset, "length", length)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-		}
-		if length > len(entry) {
-			cause := fmt.Errorf("secondary dictionary entry at offset %d declares %d bytes but only %d remain", offset, length, len(entry))
-			common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "error", cause, "offset", offset, "length", length, "remaining", len(entry))
-			return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-		}
 		nameBytes := entry[:length]
 		if !utf8.Valid(nameBytes) {
 			cause := fmt.Errorf("secondary dictionary entry at offset %d contains invalid UTF-8 in its %d-byte name", offset, length)

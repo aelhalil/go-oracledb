@@ -41,7 +41,6 @@ import (
 	"encoding/binary"
 	stdjson "encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"sort"
 	"strings"
@@ -192,7 +191,7 @@ func (enc *osonEncoder) encodeScalarDocument(value any) (drvCommon.B1Array, erro
 	enc.treeSegmentBytes = tree.bytes()
 	enc.prepareScalarHeader()
 
-	doc := enc.emitScalarDocument()
+	doc := enc.generateScalarDocument()
 	common.Odl.Debug("osonEncoder.encodeScalarDocument: completed",
 		"opcode", enc.treeSegmentBytes[0],
 		"treeBytes", len(enc.treeSegmentBytes),
@@ -211,8 +210,8 @@ func (enc *osonEncoder) prepareScalarHeader() {
 	}
 }
 
-// emitScalarDocument writes a scalar OSON document with the tree segment after the header.
-func (enc *osonEncoder) emitScalarDocument() drvCommon.B1Array {
+// generateScalarDocument builds a scalar OSON document with the tree segment after the header.
+func (enc *osonEncoder) generateScalarDocument() drvCommon.B1Array {
 	var out osonWriteBuffer
 	out.writeUB4(drvCommon.UB4(osonMagicPrefix | int(enc.version)))
 	out.writeUB2(enc.flags)
@@ -237,7 +236,7 @@ func (enc *osonEncoder) encodeContainer(value any) (drvCommon.B1Array, error) {
 	}
 
 	enc.prepareContainerHeader()
-	doc := enc.emitContainerDocument()
+	doc := enc.generateContainerDocument()
 	common.Odl.Debug("osonEncoder.encodeContainer: completed",
 		"primaryFields", len(enc.dict.primary),
 		"secondaryFields", len(enc.dict.secondary),
@@ -300,14 +299,14 @@ func (enc *osonEncoder) prepareContainerHeader() {
 	}
 }
 
-// emitContainerDocument writes the non-scalar OSON header, dictionaries, and
+// generateContainerDocument builds the non-scalar OSON header, dictionaries, and
 // tree segment.
 //
 // Containers always use inline leaf values in this encoder. Child offsets are
 // stored as tree-relative entries using the narrowest width selected while
 // building the tree, so the document does not need the relative-offset header
 // flag.
-func (enc *osonEncoder) emitContainerDocument() drvCommon.B1Array {
+func (enc *osonEncoder) generateContainerDocument() drvCommon.B1Array {
 	var out osonWriteBuffer
 	out.writeUB4(drvCommon.UB4(osonMagicPrefix | int(enc.version)))
 	out.writeUB2(enc.flags)
@@ -485,13 +484,29 @@ func (enc *osonEncoder) writeArrayNode(tree *osonWriteBuffer, value []any, eleme
 	return nil
 }
 
-// writeObjectNode writes one object node and its member values.
+// writeObjectNode writes an object node and its member values in finalized
+// dictionary field-ID order. The field-name dictionary must be prepared first.
 func (enc *osonEncoder) writeObjectNode(tree *osonWriteBuffer, value map[string]any, childOffsetSize int) error {
-	nodeOffset := tree.position()
-	members, err := enc.sortedObjectMembers(value)
-	if err != nil {
-		return err
+	// objectMember pairs a field ID with its child value while sorting.
+	type objectMember struct {
+		fieldID int
+		value   any
 	}
+
+	nodeOffset := tree.position()
+	// Resolve field names to OSON field IDs.
+	members := make([]objectMember, 0, len(value))
+	for key, child := range value {
+		field := enc.dict.entriesByName[key]
+		members = append(members, objectMember{
+			fieldID: field.fieldID,
+			value:   child,
+		})
+	}
+	// OSON object members are ordered by field ID.
+	sort.Slice(members, func(i, j int) bool {
+		return members[i].fieldID < members[j].fieldID
+	})
 	common.Odl.Debug("osonEncoder.writeObjectNode: begin",
 		"treeOffset", nodeOffset,
 		"members", len(members),
@@ -500,9 +515,11 @@ func (enc *osonEncoder) writeObjectNode(tree *osonWriteBuffer, value map[string]
 	tree.writeUB1(containerOpcode(osonOpObjectType, len(members), childOffsetSize))
 	tree.writeContainerCount(len(members))
 
+	// Reserve field-ID and child-offset tables before writing child nodes.
 	fieldIDStart := tree.reserve(len(members) * enc.dict.fieldIDWidth)
 	offsetStart := tree.reserve(len(members) * childOffsetSize)
 	for i, member := range members {
+		// Patch this member's IDs and offset, then write its value node.
 		if err := tree.patchUint(fieldIDStart+i*enc.dict.fieldIDWidth, enc.dict.fieldIDWidth, member.fieldID); err != nil {
 			return enc.bufferPatchError("writeObjectNode", err)
 		}
@@ -518,35 +535,6 @@ func (enc *osonEncoder) writeObjectNode(tree *osonWriteBuffer, value map[string]
 		"members", len(members),
 		"encodedBytes", tree.position()-nodeOffset)
 	return nil
-}
-
-// objectMember pairs an object value with its finalized dictionary field id.
-type objectMember struct {
-	// fieldID is the finalized dictionary field ID for this object key.
-	fieldID int
-	// value is the child value encoded at the matching object-member position.
-	value any
-}
-
-// sortedObjectMembers returns object members in ascending field-id order.
-func (enc *osonEncoder) sortedObjectMembers(value map[string]any) ([]objectMember, error) {
-	members := make([]objectMember, 0, len(value))
-	for key, child := range value {
-		field, ok := enc.dict.entriesByName[key]
-		if !ok {
-			cause := fmt.Errorf("field %q missing from finalized OSON dictionary", key)
-			common.Odl.Debug("osonEncoder.sortedObjectMembers: failed", "error", cause)
-			return nil, common.NewOracleError(oracleErrors.OsonEncodingError, cause)
-		}
-		members = append(members, objectMember{
-			fieldID: field.fieldID,
-			value:   child,
-		})
-	}
-	sort.Slice(members, func(i, j int) bool {
-		return members[i].fieldID < members[j].fieldID
-	})
-	return members, nil
 }
 
 // writeScalarNode writes one supported scalar value into the OSON tree.
@@ -568,33 +556,33 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 	case string:
 		return enc.writeString(tree, v)
 	case int:
-		return enc.writeInt(tree, int64(v))
+		enc.writeInt(tree, int64(v))
 	case int8:
-		return enc.writeInt(tree, int64(v))
+		enc.writeInt(tree, int64(v))
 	case int16:
-		return enc.writeInt(tree, int64(v))
+		enc.writeInt(tree, int64(v))
 	case int32:
-		return enc.writeInt(tree, int64(v))
+		enc.writeInt(tree, int64(v))
 	case int64:
-		return enc.writeInt(tree, v)
+		enc.writeInt(tree, v)
 	case uint:
-		return enc.writeUInt(tree, uint64(v))
+		enc.writeUInt(tree, uint64(v))
 	case uint8:
-		return enc.writeUInt(tree, uint64(v))
+		enc.writeUInt(tree, uint64(v))
 	case uint16:
-		return enc.writeUInt(tree, uint64(v))
+		enc.writeUInt(tree, uint64(v))
 	case uint32:
-		return enc.writeUInt(tree, uint64(v))
+		enc.writeUInt(tree, uint64(v))
 	case uint64:
-		return enc.writeUInt(tree, v)
+		enc.writeUInt(tree, v)
 	case float32:
-		return enc.writeBinaryFloat(tree, v)
+		enc.writeBinaryFloat(tree, v)
 	case float64:
-		return enc.writeBinaryDouble(tree, v)
+		enc.writeBinaryDouble(tree, v)
+	case time.Time:
+		enc.writeTime(tree, v)
 	case []byte:
 		return enc.writeBinary(tree, drvCommon.B1Array(v))
-	case time.Time:
-		return enc.writeTime(tree, v)
 	case stdjson.Number:
 		return enc.writeStringNumber(tree, v.String())
 	default:
@@ -602,29 +590,23 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 		common.Odl.Debug("osonEncoder.writeScalarNode: failed", "error", cause)
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
+	return nil
 }
 
 // writeTime writes value using the configured OSON temporal scalar.
-func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) error {
+func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) {
 	switch enc.options.TimeEncoding {
 	case drvCommon.JSONTimeAsDate:
-		payload, err := converters.EncodeDate(value)
-		if err != nil {
-			return _wrapScalarEncodingError("writeTime", err)
-		}
+		payload, _ := converters.EncodeDate(value)
 		tree.writeUB1(osonOpDate)
 		tree.writeBytes(payload)
 	case drvCommon.JSONTimeAsTimestampTZ:
-		payload, err := encodeTimestampTZ(value)
-		if err != nil {
-			return _wrapScalarEncodingError("writeTime", err)
-		}
+		payload := encodeTimestampTZ(value)
 		tree.writeUB1(osonOpTimestampTZ)
 		tree.writeBytes(payload)
 	default:
-		return enc.writeTimestamp(tree, value)
+		enc.writeTimestamp(tree, value)
 	}
-	return nil
 }
 
 // writeString writes one UTF-8 string scalar node.
@@ -666,70 +648,55 @@ func (enc *osonEncoder) writeString(tree *osonWriteBuffer, value string) error {
 
 // writeInt encodes a signed integer and selects the smallest compatible OSON
 // Oracle NUMBER opcode from the encoded payload length.
-func (enc *osonEncoder) writeInt(tree *osonWriteBuffer, value int64) error {
-	payload, err := converters.EncodeInt(value)
-	if err != nil {
-		return _wrapScalarEncodingError("writeInt", err)
-	}
-	if len(payload) == 0 {
-		cause := fmt.Errorf("encoding signed integer %d produced an empty Oracle NUMBER payload", value)
-		common.Odl.Debug("osonEncoder.writeInt: failed", "error", cause)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
-	}
+func (enc *osonEncoder) writeInt(tree *osonWriteBuffer, value int64) {
+	payload, _ := converters.EncodeInt(value)
 	if len(payload) <= _compactSigned32LengthMask {
 		opcode := osonOpCompactSigned32Prefix | drvCommon.UB1(len(payload))
 		common.Odl.Debug("osonEncoder.writeInt: compact SB4", "opcode", opcode, "payloadLength", len(payload))
 		tree.writeUB1(opcode)
 		tree.writeBytes(payload)
-		return nil
+		return
 	}
 	if len(payload) > _compactSigned64LengthMask {
-		return writeOracleNumberPayload(tree, payload, value)
+		writeOracleNumberPayload(tree, payload)
+		return
 	}
 	opcode := osonOpCompactSigned64Prefix | drvCommon.UB1(len(payload))
 	common.Odl.Debug("osonEncoder.writeInt: compact SB8", "opcode", opcode, "payloadLength", len(payload))
 	tree.writeUB1(opcode)
 	tree.writeBytes(payload)
-	return nil
 }
 
 // writeUInt writes an unsigned integer as a generic Oracle NUMBER.
-func (enc *osonEncoder) writeUInt(tree *osonWriteBuffer, value uint64) error {
-	payload, err := converters.EncodeUInt(value)
-	if err != nil {
-		return _wrapScalarEncodingError("writeUInt", err)
-	}
-	return writeOracleNumberPayload(tree, payload, value)
+func (enc *osonEncoder) writeUInt(tree *osonWriteBuffer, value uint64) {
+	payload, _ := converters.EncodeUInt(value)
+	writeOracleNumberPayload(tree, payload)
 }
 
 // writeOracleNumberPayload selects the generic Oracle NUMBER opcode after the
 // payload has been encoded. Compact NUMBER stores payload length minus one in
 // the opcode; larger payloads use an explicit UB1 length.
-func writeOracleNumberPayload(tree *osonWriteBuffer, payload drvCommon.B1Array, value any) error {
-
-	if len(payload) == 0 {
-		cause := fmt.Errorf("encoding integer %v produced an empty Oracle NUMBER payload", value)
-		common.Odl.Debug("writeOracleNumberPayload: failed", "error", cause)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
-	}
+func writeOracleNumberPayload(tree *osonWriteBuffer, payload drvCommon.B1Array) {
 	if len(payload) <= _compactOracleNumberMaxPayloadLen {
 		opcode := osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(payload)-1)
 		common.Odl.Debug("writeOracleNumberPayload: compact oracle number", "opcode", opcode, "payloadLength", len(payload))
 		tree.writeUB1(opcode)
 		tree.writeBytes(payload)
-		return nil
+		return
 	}
 
 	common.Odl.Debug("writeOracleNumberPayload: explicit oracle number", "opcode", osonOpOracleNumber, "payloadLength", len(payload))
 	tree.writeUB1(osonOpOracleNumber)
 	tree.writeUB1(drvCommon.UB1(len(payload)))
 	tree.writeBytes(payload)
-	return nil
 }
 
 // writeStringNumber writes a JSON number as string.
 func (enc *osonEncoder) writeStringNumber(tree *osonWriteBuffer, value string) error {
-	if !isJSONNumber(value) {
+	// Validate the JSON number string.
+	value = strings.TrimSpace(value)
+	var number stdjson.Number
+	if value == "" || stdjson.Unmarshal([]byte(value), &number) != nil || number == "" {
 		cause := fmt.Errorf("value %q is not valid JSON number text", value)
 		common.Odl.Debug("osonEncoder.writeStringNumber: failed", "error", cause, "length", len(value))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
@@ -750,53 +717,24 @@ func (enc *osonEncoder) writeStringNumber(tree *osonWriteBuffer, value string) e
 	return nil
 }
 
-// isJSONNumber reports whether value is exactly one RFC 8259 number token.
-func isJSONNumber(value string) bool {
-	if value == "" || strings.TrimSpace(value) != value {
-		return false
-	}
-
-	decoder := stdjson.NewDecoder(strings.NewReader(value))
-	decoder.UseNumber()
-	var decoded any
-	if err := decoder.Decode(&decoded); err != nil {
-		return false
-	}
-	if _, ok := decoded.(stdjson.Number); !ok {
-		return false
-	}
-	// A second decode must reach EOF; otherwise the input contained another
-	// token after the number.
-	var trailing any
-	return decoder.Decode(&trailing) == io.EOF
-}
-
 // writeBinaryFloat writes a fixed-width binary float scalar.
-func (enc *osonEncoder) writeBinaryFloat(tree *osonWriteBuffer, value float32) error {
-	payload, err := converters.EncodeBinaryFloat(value)
-	if err != nil {
-		return _wrapScalarEncodingError("writeBinaryFloat", err)
-	}
+func (enc *osonEncoder) writeBinaryFloat(tree *osonWriteBuffer, value float32) {
+	payload, _ := converters.EncodeBinaryFloat(value)
 
 	tree.writeUB1(osonOpBinaryFloat)
 	tree.writeBytes(payload)
 
 	common.Odl.Debug("osonEncoder.writeBinaryFloat: binary float", "opcode", osonOpBinaryFloat, "payloadLength", len(payload))
-	return nil
 }
 
 // writeBinaryDouble writes a fixed-width binary double scalar.
-func (enc *osonEncoder) writeBinaryDouble(tree *osonWriteBuffer, value float64) error {
-	payload, err := converters.EncodeBinaryDouble(value)
-	if err != nil {
-		return _wrapScalarEncodingError("writeBinaryDouble", err)
-	}
+func (enc *osonEncoder) writeBinaryDouble(tree *osonWriteBuffer, value float64) {
+	payload, _ := converters.EncodeBinaryDouble(value)
 
 	tree.writeUB1(osonOpBinaryDouble)
 	tree.writeBytes(payload)
 
 	common.Odl.Debug("osonEncoder.writeBinaryDouble: binary double", "opcode", osonOpBinaryDouble, "payloadLength", len(payload))
-	return nil
 }
 
 // writeBinary writes a variable-length binary scalar.
@@ -824,11 +762,8 @@ func (enc *osonEncoder) writeBinary(tree *osonWriteBuffer, value drvCommon.B1Arr
 }
 
 // writeTimestamp writes an Oracle TIMESTAMP scalar.
-func (enc *osonEncoder) writeTimestamp(tree *osonWriteBuffer, value time.Time) error {
-	payload, err := converters.EncodeTimestamp(value)
-	if err != nil {
-		return _wrapScalarEncodingError("writeTimestamp", err)
-	}
+func (enc *osonEncoder) writeTimestamp(tree *osonWriteBuffer, value time.Time) {
+	payload, _ := converters.EncodeTimestamp(value)
 
 	tree.writeUB1(osonOpTimestamp)
 	tree.writeBytes(payload)
@@ -836,14 +771,6 @@ func (enc *osonEncoder) writeTimestamp(tree *osonWriteBuffer, value time.Time) e
 	common.Odl.Debug("osonEncoder.writeTimestamp: completed",
 		"opcode", osonOpTimestamp,
 		"payloadLength", len(payload))
-	return nil
-}
-
-// _wrapScalarEncodingError logs converter failures and returns the public OSON
-// encoding error used by scalar writers.
-func _wrapScalarEncodingError(operation string, cause error) error {
-	common.Odl.Debug("osonEncoder."+operation+": failed", "error", cause)
-	return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 }
 
 // containerOpcode builds the container opcode from the base type, child count, and child-offset size.

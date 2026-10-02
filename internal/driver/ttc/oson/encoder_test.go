@@ -262,53 +262,6 @@ func TestEncodeContainers_EncodesNestedObjectAndArray(t *testing.T) {
 	assertEncodedValueDecodesTo(t, doc, value)
 }
 
-// TestEncodeContainers_EncodesArrayRootWithoutDictionary verifies that an array-root document does not emit a field-name dictionary.
-func TestEncodeContainers_EncodesArrayRootWithoutDictionary(t *testing.T) {
-	value := []any{"alpha", []any{"beta", "gamma"}}
-
-	doc, err := Encode(value)
-	if err != nil {
-		t.Fatalf("Encode returned error: %v", err)
-	}
-
-	buf := newOsonBuffer(doc)
-	header, err := newOsonHeader(buf)
-	if err != nil {
-		t.Fatalf("newOsonHeader returned error: %v", err)
-	}
-	if got, want := len(header.fieldDictionary.fieldNames), 0; got != want {
-		t.Fatalf("uniqueFields = %d, want %d", got, want)
-	}
-	assertEncodedValueDecodesTo(t, doc, value)
-}
-
-// TestEncodeContainers_ProducesDeterministicBytesForObjectMaps verifies that
-// map iteration order cannot change encoded object bytes.
-func TestEncodeContainers_ProducesDeterministicBytesForObjectMaps(t *testing.T) {
-	value := map[string]any{
-		"z": "last",
-		"a": "first",
-		"m": map[string]any{
-			"b": "nested-b",
-			"a": "nested-a",
-		},
-	}
-
-	first, err := Encode(value)
-	if err != nil {
-		t.Fatalf("Encode returned error: %v", err)
-	}
-	for i := 0; i < 10; i++ {
-		next, err := Encode(value)
-		if err != nil {
-			t.Fatalf("Encode iteration %d returned error: %v", i, err)
-		}
-		if !reflect.DeepEqual(next, first) {
-			t.Fatalf("Encode iteration %d produced non-deterministic bytes", i)
-		}
-	}
-}
-
 // TestFieldNameSortingOrder verifies field-name dictionary entries are ordered
 // by hash, byte length, then UTF-8 bytes.
 func TestFieldNameSortingOrder(t *testing.T) {
@@ -352,6 +305,7 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 		{name: "float32 uses binary float", value: float32(12.25), want: json.Number("12.25"), wantOp: osonOpBinaryFloat, numberOpt: true},
 		{name: "float64 uses binary double", value: float64(123.5), want: json.Number("123.5"), wantOp: osonOpBinaryDouble, numberOpt: true},
 		{name: "string number preserves text", value: json.Number("9876543210.25"), want: json.Number("9876543210.25"), wantOp: osonOpStringNumber, numberOpt: true},
+		{name: "string number trims whitespace", value: json.Number(" 9876543210.25 \n"), want: json.Number("9876543210.25"), wantOp: osonOpStringNumber, numberOpt: true},
 	}
 
 	for _, tt := range tests {

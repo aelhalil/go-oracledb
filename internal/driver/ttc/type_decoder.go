@@ -40,14 +40,12 @@ package ttc
 
 import (
 	"database/sql/driver"
-	"fmt"
 	"reflect"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
-	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/oson"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -492,7 +490,7 @@ func DecodeClob(columnContext columnContext, data driverCommon.B1Array) (driver.
 DecodeJson returns the underlying JSON payload as a driver.Value.
 
 Parameters:
-  - columnContext: Column name and index used to identify an invalid value.
+  - columnContext: _
   - data: Raw TTC payload bytes for the JSON column.
 
 Returns:
@@ -500,14 +498,9 @@ Returns:
   - error: an error if the payload is not OSON.
 
 Errors:
-  - Returns OsonHeaderError when the payload does not start with the OSON magic prefix.
+  - None
 */
-func DecodeJson(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
-	if !oson.IsOson(data) {
-		cause := fmt.Errorf("JSON payload is not an OSON document")
-		return nil, common.NewOracleError(oracleErrors.OsonHeaderError, cause)
-	}
-
+func DecodeJson(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	return []byte(data), nil
 }
 

@@ -313,15 +313,15 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 
 Oracle Database `JSON` type support requires Oracle Database 21c or higher.
 
-- Fetch Oracle JSON into `oracle/json.JSON`.
-- Bind existing JSON text with `oracle/json.JSONString`.
-- Bind supported Go values with `oracle/json.JSON`.
+- Fetch Oracle JSON into `oracle/datatype/json.JSON`.
+- Bind existing JSON text with `oracle/datatype/json/json.JSONString`.
+- Bind supported Go values with `oracle/datatype/json/json.JSON`.
 
 See the [JSON example](./examples/json/main.go) for complete usage.
 
 | Oracle Type   | Driver returns       |
 |---------------|----------------------|
-| `JSON` (21c+) | `oracle/json.JSON`   |
+| `JSON` (21c+) | `oracle/datatype/json/json.JSON`   |
 
 ## Help
 Are you having trouble with Oracle Database Driver for Go? We want to help!

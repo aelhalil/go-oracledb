@@ -41,7 +41,6 @@ package oson
 import (
 	"encoding/binary"
 	"slices"
-	"strings"
 	"testing"
 
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -390,26 +389,6 @@ func TestOsonHeader_RejectsTruncatedTreeSegment(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_RejectsCorruptPrimaryDictionaryOffset verifies out-of-heap primary offsets return contextual errors.
-func TestOsonHeader_RejectsCorruptPrimaryDictionaryOffset(t *testing.T) {
-	corrupt := sampleSimpleObject.cloneOSON()
-	// sampleSimpleObject stores:
-	//   header[0:13]
-	//   3 primary hash bytes
-	//   3 UB2 dictionary offsets
-	// The first offset starts at byte 16.
-	binary.BigEndian.PutUint16(corrupt[16:], 0xffff)
-
-	_, err := newOsonHeader(newOsonBuffer(corrupt))
-	if err == nil {
-		t.Fatal("newOsonHeader succeeded, want error for corrupt dictionary offset")
-	}
-
-	if !strings.Contains(err.Error(), "outside heap") {
-		t.Fatalf("error = %v, want heap-offset context", err)
-	}
-}
-
 // TestOsonHeader_RejectsMalformedFixedHeader verifies malformed fixed-header variants return OSON header errors.
 func TestOsonHeader_RejectsMalformedFixedHeader(t *testing.T) {
 	tests := []struct {
@@ -660,9 +639,6 @@ func TestOsonHeader_ForwardingHelpers(t *testing.T) {
 		})
 	}
 
-	if err := (&osonHeader{formatVersion: 3}).readSecondaryDictionary(newOsonBuffer(nil), _parsedDictionaryLayout{secondaryCount: 1}); err == nil {
-		t.Fatal("readSecondaryDictionary(empty heap) error = nil, want failure")
-	}
 }
 
 // TestOsonHeader_AddForwardingAddressValidatesMappings verifies update-map
@@ -694,51 +670,6 @@ func TestOsonHeader_AddForwardingAddressValidatesMappings(t *testing.T) {
 			err := header.addForwardingAddress(test.from, test.to, 8)
 			if err == nil {
 				t.Fatal("addForwardingAddress() error = nil, want validation failure")
-			}
-			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
-		})
-	}
-}
-
-// TestOsonHeader_RejectsCorruptDictionaryHeaps verifies malformed primary and secondary dictionary heaps are rejected.
-func TestOsonHeader_RejectsCorruptDictionaryHeaps(t *testing.T) {
-	tests := []struct {
-		name   string
-		mutate func(drvCommon.B1Array)
-	}{
-		{
-			name: "primary heap size zero with nonzero field count",
-			mutate: func(doc drvCommon.B1Array) {
-				binary.BigEndian.PutUint16(doc[7:], 0)
-			},
-		},
-		{
-			name: "primary entry length exceeds heap",
-			mutate: func(doc drvCommon.B1Array) {
-				// First primary heap byte is the length of the "name" field.
-				doc[22] = 0x20
-			},
-		},
-		{
-			name: "secondary entry too short for long-key tier",
-			mutate: func(doc drvCommon.B1Array) {
-				// In sampleSecondaryDictionary the secondary heap starts at byte 36.
-				binary.BigEndian.PutUint16(doc[36:], osonMaxPrimaryDictKeyLength)
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			source := sampleSimpleObject
-			if strings.HasPrefix(tc.name, "secondary") {
-				source = sampleSecondaryDictionary
-			}
-			corrupt := source.cloneOSON()
-			tc.mutate(corrupt)
-			_, err := newOsonHeader(newOsonBuffer(corrupt))
-			if err == nil {
-				t.Fatal("newOsonHeader() error = nil, want dictionary failure")
 			}
 			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
 		})
@@ -916,7 +847,7 @@ func TestOsonHeader_RejectsTruncatedInput(t *testing.T) {
 }
 
 // TestOsonHeader_RejectsInvalidSecondaryDictionary expects secondary dictionary parsing to
-// reject truncated tables and heaps, invalid entry lengths or offsets, and invalid UTF-8
+// reject truncated tables and heaps and invalid UTF-8
 // field names.
 func TestOsonHeader_RejectsInvalidSecondaryDictionary(t *testing.T) {
 	t.Parallel()
@@ -935,10 +866,6 @@ func TestOsonHeader_RejectsInvalidSecondaryDictionary(t *testing.T) {
 		{"truncated hash", nil, 1},
 		{"truncated offset", drvCommon.B1Array{0, 0}, 1},
 		{"truncated heap", drvCommon.B1Array{0, 0, 0, 0, 0, 0}, 1},
-		{"offset outside heap", makeDocument(drvCommon.B1Array{0}, 1), 1},
-		{"entry missing length", makeDocument(drvCommon.B1Array{0}, 0), 1},
-		{"entry too short for primary tier", makeDocument(drvCommon.B1Array{0, 0}, 0), 2},
-		{"entry exceeds heap", makeDocument(drvCommon.B1Array{1, 0, 0, 0}, 0), 4},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {

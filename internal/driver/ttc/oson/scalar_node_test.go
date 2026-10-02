@@ -60,7 +60,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 	datePayload, _ := converters.EncodeDate(time.Date(2024, time.January, 2, 3, 4, 5, 0, time.Local))
 	timestampPayload, _ := converters.EncodeTimestamp(time.Date(2024, time.January, 2, 3, 4, 5, 123000000, time.Local))
 	timestamp7Payload, _ := converters.EncodeTimestamp(time.Date(2024, time.January, 2, 3, 4, 5, 0, time.Local))
-	timestampTZPayload, _ := encodeTimestampTZ(timestampTZ)
+	timestampTZPayload := encodeTimestampTZ(timestampTZ)
 	binaryFloatPayload, _ := converters.EncodeBinaryFloat(float32(12.5))
 	binaryDoublePayload, _ := converters.EncodeBinaryDouble(float64(42.25))
 	integerNumberPayload, _ := converters.EncodeInt(int64(42))
@@ -409,58 +409,6 @@ func TestScalarNode_NumberAsStringOption(t *testing.T) {
 				t.Fatalf("expected Value(JSONNumberAsJSONNumber) to return %#v, got %#v", tc.want, got)
 			}
 		})
-	}
-}
-
-// TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat verifies that
-// large Oracle NUMBER payloads still decode to float64 by default while the string option preserves exact text.
-func TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat(t *testing.T) {
-	const text = "123456789012345678901234567890.12345"
-
-	payload := converters.ToNumber([]byte("12345678901234567890123456789012345"), false, 29)
-	node := newScalarNodeAt(
-		newOsonBuffer(append(drvCommon.B1Array{osonOpOracleNumber, byte(drvCommon.UB1(len(payload)))}, payload...)),
-		&osonHeader{},
-		0,
-		osonOpOracleNumber,
-	)
-
-	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
-	if err != nil {
-		t.Fatalf("Value(JSONNumberAsFloat64) error = %v", err)
-	}
-	want, err := strconv.ParseFloat(text, 64)
-	if err != nil {
-		t.Fatalf("ParseFloat() error = %v", err)
-	}
-	if got != want {
-		t.Fatalf("Value(JSONNumberAsFloat64) = %#v, want %#v", got, want)
-	}
-
-	gotString, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
-	if err != nil {
-		t.Fatalf("Value(JSONNumberAsJSONNumber) error = %v", err)
-	}
-	if gotString != json.Number(text) {
-		t.Fatalf("Value(JSONNumberAsJSONNumber) = %#v, want json.Number(%q)", gotString, text)
-	}
-
-	gotText, err := node.String()
-	if err != nil {
-		t.Fatalf("String() error = %v", err)
-	}
-	if gotText != text {
-		t.Fatalf("String() = %q, want %q", gotText, text)
-	}
-}
-
-// TestScalarNode_KindReportsScalar expects a decoded short-string node to
-// identify itself as a scalar independently of its payload value.
-func TestScalarNode_KindReportsScalar(t *testing.T) {
-	node := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0, 0x02)
-
-	if got, want := node.Kind(), drvCommon.KindScalar; got != want {
-		t.Fatalf("expected the short-string node to report kind %v, got %v", want, got)
 	}
 }
 

@@ -297,7 +297,7 @@ func TestTTCRowsColumnTypeScanType(t *testing.T) {
 		{name: "CLOB", dtype: DtyClob, want: reflect.TypeFor[string]()},
 		{name: "BLOB", dtype: DtyBlob, want: reflect.TypeFor[[]byte]()},
 
-		{name: "JSON", dtype: DtyJSON, want: reflect.TypeOf((*json.JSON)(nil))},
+		{name: "JSON", dtype: DtyJSON, want: reflect.TypeFor[json.JSON]()},
 	}
 
 	for _, tc := range cases {
