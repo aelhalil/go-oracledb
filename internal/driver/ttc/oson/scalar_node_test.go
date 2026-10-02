@@ -60,7 +60,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 	datePayload, _ := converters.EncodeDate(time.Date(2024, time.January, 2, 3, 4, 5, 0, time.Local))
 	timestampPayload, _ := converters.EncodeTimestamp(time.Date(2024, time.January, 2, 3, 4, 5, 123000000, time.Local))
 	timestamp7Payload, _ := converters.EncodeTimestamp(time.Date(2024, time.January, 2, 3, 4, 5, 0, time.Local))
-	timestampTZPayload, _ := converters.EncodeTimestampWithTimeZone(timestampTZ)
+	timestampTZPayload, _ := encodeTimestampTZ(timestampTZ)
 	binaryFloatPayload, _ := converters.EncodeBinaryFloat(float32(12.5))
 	binaryDoublePayload, _ := converters.EncodeBinaryDouble(float64(42.25))
 	integerNumberPayload, _ := converters.EncodeInt(int64(42))
@@ -274,6 +274,9 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 				_, off := tm.Zone()
 				if off != 2*3600 {
 					t.Fatalf("expected the decoded timezone offset to be 7200 seconds, got %d", off)
+				}
+				if !tm.Equal(timestampTZ) {
+					t.Fatalf("decoded timestamp = %s, want %s", tm.Format(time.RFC3339Nano), timestampTZ.Format(time.RFC3339Nano))
 				}
 			},
 		},

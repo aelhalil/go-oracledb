@@ -615,7 +615,7 @@ func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) error 
 		tree.writeUB1(osonOpDate)
 		tree.writeBytes(payload)
 	case drvCommon.JSONTimeAsTimestampTZ:
-		payload, err := converters.EncodeTimestampWithTimeZone(value)
+		payload, err := encodeTimestampTZ(value)
 		if err != nil {
 			return _wrapScalarEncodingError("writeTime", err)
 		}

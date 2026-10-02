@@ -43,6 +43,7 @@ import (
 	"math"
 	"reflect"
 	"testing"
+	"time"
 
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -113,6 +114,34 @@ func TestOsonDecoderFixtures(t *testing.T) {
 			}
 			assertSameJSON(t, text, test.sample.json)
 		})
+	}
+}
+
+// TestOsonSampleTimestampTZ verifies the sample OSON bytes decode to the
+// timestamp string stored with that independent fixture.
+func TestOsonSampleTimestampTZ(t *testing.T) {
+	root, err := Parse(sampleTimestampTZ.oson)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	value, err := root.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
+	if err != nil {
+		t.Fatalf("GetValue() error = %v", err)
+	}
+	got, ok := value.(time.Time)
+	if !ok {
+		t.Fatalf("GetValue() = %T, want time.Time", value)
+	}
+	var wantText string
+	if err := json.Unmarshal([]byte(sampleTimestampTZ.json), &wantText); err != nil {
+		t.Fatalf("unmarshal sample timestamp JSON: %v", err)
+	}
+	want, err := time.Parse(time.RFC3339Nano, wantText)
+	if err != nil {
+		t.Fatalf("parse sample timestamp JSON: %v", err)
+	}
+	if got.Format(time.RFC3339Nano) != want.Format(time.RFC3339Nano) {
+		t.Fatalf("decoded timestamp = %s, want %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
 	}
 }
 

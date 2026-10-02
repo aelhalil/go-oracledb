@@ -443,7 +443,7 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 			"offset", offset,
 			"opcode", opcode,
 			"payloadLen", len(raw))
-		return converters.DecodeTimestampWithTimeZone(raw)
+		return decodeTimestampTZ(raw)
 
 	// INTERVAL YEAR TO MONTH uses a fixed payload.
 	case opcode == osonOpIntervalYM:

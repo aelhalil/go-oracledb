@@ -90,6 +90,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParse_RejectsInvalidUpdateTargets", Categories: "unitary", Exclusive: false, Fn: TestParse_RejectsInvalidUpdateTargets},
 	{Name: "TestParse_RejectsForwardingCycle", Categories: "unitary", Exclusive: false, Fn: TestParse_RejectsForwardingCycle},
 	{Name: "TestOsonDecoderFixtures", Categories: "unitary", Exclusive: false, Fn: TestOsonDecoderFixtures},
+	{Name: "TestOsonSampleTimestampTZ", Categories: "unitary", Exclusive: false, Fn: TestOsonSampleTimestampTZ},
 	{Name: "TestOsonDecoder_RejectsNonJSONBinaryFloatText", Categories: "unitary", Exclusive: false, Fn: TestOsonDecoder_RejectsNonJSONBinaryFloatText},
 
 	{Name: "TestObjectNode_KindReportsObject", Categories: "unitary", Exclusive: false, Fn: TestObjectNode_KindReportsObject},
