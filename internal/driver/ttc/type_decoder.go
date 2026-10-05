@@ -617,7 +617,7 @@ func GetScanTypeForIntervalYearToMonthColumn(_ columnContext) reflect.Type {
 }
 
 func GetScanTypeForJsonColumn(_ columnContext) reflect.Type {
-	return reflect.TypeOf((*json.JSON)(nil))
+	return reflect.TypeFor[json.JSON]()
 }
 
 func GetScanTypeForCLOBColumn(_ columnContext) reflect.Type {
