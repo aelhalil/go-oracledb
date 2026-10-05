@@ -556,23 +556,23 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 	case string:
 		return enc.writeString(tree, v)
 	case int:
-		enc.writeInt(tree, int64(v))
+		enc.writeInt64(tree, int64(v))
 	case int8:
-		enc.writeInt(tree, int64(v))
+		enc.writeInt32(tree, int32(v))
 	case int16:
-		enc.writeInt(tree, int64(v))
+		enc.writeInt32(tree, int32(v))
 	case int32:
-		enc.writeInt(tree, int64(v))
+		enc.writeInt32(tree, v)
 	case int64:
-		enc.writeInt(tree, v)
+		enc.writeInt64(tree, v)
 	case uint:
 		enc.writeUInt(tree, uint64(v))
 	case uint8:
-		enc.writeUInt(tree, uint64(v))
+		enc.writeInt32(tree, int32(v))
 	case uint16:
-		enc.writeUInt(tree, uint64(v))
+		enc.writeInt32(tree, int32(v))
 	case uint32:
-		enc.writeUInt(tree, uint64(v))
+		enc.writeInt64(tree, int64(v))
 	case uint64:
 		enc.writeUInt(tree, v)
 	case float32:
@@ -646,23 +646,21 @@ func (enc *osonEncoder) writeString(tree *osonWriteBuffer, value string) error {
 	return nil
 }
 
-// writeInt encodes a signed integer and selects the smallest compatible OSON
-// Oracle NUMBER opcode from the encoded payload length.
-func (enc *osonEncoder) writeInt(tree *osonWriteBuffer, value int64) {
+// writeInt32 encodes value as an OSON SB4 signed integer.
+func (enc *osonEncoder) writeInt32(tree *osonWriteBuffer, value int32) {
+	payload, _ := converters.EncodeInt(int64(value))
+	opcode := osonOpCompactSigned32Prefix | drvCommon.UB1(len(payload))
+	common.Odl.Debug("osonEncoder.writeInt32: completed", "opcode", opcode, "payloadLength", len(payload))
+	tree.writeUB1(opcode)
+	tree.writeBytes(payload)
+}
+
+// writeInt64 encodes value as an OSON SB8 signed integer.
+func (enc *osonEncoder) writeInt64(tree *osonWriteBuffer, value int64) {
 	payload, _ := converters.EncodeInt(value)
-	if len(payload) <= _compactSigned32LengthMask {
-		opcode := osonOpCompactSigned32Prefix | drvCommon.UB1(len(payload))
-		common.Odl.Debug("osonEncoder.writeInt: compact SB4", "opcode", opcode, "payloadLength", len(payload))
-		tree.writeUB1(opcode)
-		tree.writeBytes(payload)
-		return
-	}
-	if len(payload) > _compactSigned64LengthMask {
-		writeOracleNumberPayload(tree, payload)
-		return
-	}
+
 	opcode := osonOpCompactSigned64Prefix | drvCommon.UB1(len(payload))
-	common.Odl.Debug("osonEncoder.writeInt: compact SB8", "opcode", opcode, "payloadLength", len(payload))
+	common.Odl.Debug("osonEncoder.writeInt64: completed", "opcode", opcode, "payloadLength", len(payload))
 	tree.writeUB1(opcode)
 	tree.writeBytes(payload)
 }

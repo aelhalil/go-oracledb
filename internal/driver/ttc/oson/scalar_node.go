@@ -245,7 +245,7 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 			"offset", offset,
 			"opcode", opcode,
 			"payloadLen", len(raw))
-		return decodeOracleNumberValue(raw, opts)
+		return decodeSignedIntegerValue[int32](raw, opts)
 
 	// Compact signed64 stores the payload width in the opcode.
 	case isCompactSigned64Opcode(opcode):
@@ -258,7 +258,7 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 			"offset", offset,
 			"opcode", opcode,
 			"payloadLen", len(raw))
-		return decodeOracleNumberValue(raw, opts)
+		return decodeSignedIntegerValue[int64](raw, opts)
 
 	// Compact NUMBER stores the payload width in the opcode.
 	case isCompactOracleNumberOpcode(opcode):
@@ -526,6 +526,26 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		details := fmt.Sprintf("unknown OSON scalar opcode 0x%02x", opcode)
 		cause := fmt.Errorf("opcode 0x%02x is not a recognized OSON scalar encoding", opcode)
 		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause, details)
+	}
+}
+
+// decodeSignedIntegerValue decodes an SB4 or SB8 Oracle NUMBER and enforces the
+// signed range promised by its OSON opcode family.
+func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts drvCommon.JSONConversionOptions) (any, error) {
+	text, err := converters.DecodeExactDecimalAsString(payload)
+	if err != nil {
+		return nil, err
+	}
+	value, _ := strconv.ParseInt(text, 10, 64)
+	result := T(value)
+
+	switch opts.NumberMode {
+	case drvCommon.JSONNumberAsJSONNumber:
+		return json.Number(text), nil
+	case drvCommon.JSONNumberAsFloat64:
+		return float64(value), nil
+	default:
+		return result, nil
 	}
 }
 

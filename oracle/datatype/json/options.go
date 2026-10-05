@@ -44,7 +44,8 @@ import drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 type NumberMode = drvCommon.JSONNumberMode
 
 const (
-	// NumberDefault preserves the numeric category represented by OSON.
+	// NumberDefault returns int32 or int64 for signed integer values, json.Number
+	// for generic Oracle NUMBER and decimal values, and float64 for binary floats.
 	NumberDefault = drvCommon.JSONNumberDefault
 	// NumberAsJSONNumber returns finite JSON numbers as encoding/json.Number.
 	NumberAsJSONNumber = drvCommon.JSONNumberAsJSONNumber

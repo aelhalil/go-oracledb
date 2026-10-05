@@ -117,7 +117,9 @@ const (
 type JSONNumberMode uint8
 
 const (
-	// JSONNumberDefault preserves the OSON numeric category.
+	// JSONNumberDefault materializes OSON SB4 numbers as int32, SB8 numbers as
+	// int64, generic Oracle NUMBER values as encoding/json.Number, and binary
+	// float/double values as float64.
 	JSONNumberDefault JSONNumberMode = iota
 	// JSONNumberAsJSONNumber returns finite values as encoding/json.Number.
 	JSONNumberAsJSONNumber
