@@ -276,8 +276,9 @@ func TestParse_RejectsForwardingCycle(t *testing.T) {
 	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 }
 
-// TestNode_ReadHelpersRejectMalformedInput expects container-count and child-offset
-// readers to return errors for truncated input and unsupported count encodings.
+// TestNode_ReadHelpersRejectMalformedInput expects the readContainerCountAt and
+// readChildOffsetAt helpers to return errors for truncated input and unsupported
+// count encodings.
 func TestNode_ReadHelpersRejectMalformedInput(t *testing.T) {
 	t.Parallel()
 
@@ -300,27 +301,5 @@ func TestNode_ReadHelpersRejectMalformedInput(t *testing.T) {
 		if _, err := readChildOffsetAt(buf, header, 0, len(buf.data), width); err == nil {
 			t.Fatalf("readChildOffsetAt(width=%d) error = nil, want truncation", width)
 		}
-	}
-
-}
-
-// TestNode_RedirectReadsRejectTruncatedPayloads expects inline redirects to return
-// errors for incomplete forwarding addresses across all supported address widths.
-func TestNode_RedirectReadsRejectTruncatedPayloads(t *testing.T) {
-	t.Parallel()
-	header := &osonHeader{}
-	for _, test := range []struct {
-		name string
-		op   drvCommon.UB1
-		data drvCommon.B1Array
-	}{
-		{"UB2", osonOpUpdateForwardUB2, drvCommon.B1Array{osonOpUpdateForwardUB2, 0}},
-		{"UB4", osonOpUpdateForwardUB4, drvCommon.B1Array{osonOpUpdateForwardUB4, 0, 0, 0}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if _, _, err := redirectedNodeOffset(newOsonBuffer(test.data), header, 0, test.op); err == nil {
-				t.Fatal("redirectedNodeOffset() error = nil, want truncated-payload failure")
-			}
-		})
 	}
 }

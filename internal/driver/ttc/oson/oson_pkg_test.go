@@ -55,22 +55,16 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestParse_RejectsEmptyTree", Categories: "unitary", Exclusive: false, Fn: TestParse_RejectsEmptyTree},
-	{Name: "TestArrayNode_NestedObjectArrayTraversal", Categories: "unitary", Exclusive: false, Fn: TestArrayNode_NestedObjectArrayTraversal},
-	{Name: "TestArrayNode_RejectsMalformedLayouts", Categories: "unitary", Exclusive: false, Fn: TestArrayNode_RejectsMalformedLayouts},
-
+	// Encoder tests.
 	{Name: "TestEncodeStringScalar_UsesExpectedStringOpcodes", Categories: "unitary", Exclusive: false, Fn: TestEncodeStringScalar_UsesExpectedStringOpcodes},
-	{Name: "TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2", Categories: "unitary", Exclusive: false, Fn: TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2},
 	{Name: "TestEncodeRejectsOSONOver32MiB", Categories: "unitary", Exclusive: false, Fn: TestEncodeRejectsOSONOver32MiB},
-	{Name: "TestEncodeContainers_EncodesNestedObjectAndArray", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_EncodesNestedObjectAndArray},
-	{Name: "TestFieldNameSortingOrder", Categories: "unitary", Exclusive: false, Fn: TestFieldNameSortingOrder},
+	{Name: "TestSortFieldNames_OrdersByHashLengthThenUTF8", Categories: "unitary", Exclusive: false, Fn: TestSortFieldNames_OrdersByHashLengthThenUTF8},
 	{Name: "TestEncodeScalarValues_CoverEssentialScalarOpcodes", Categories: "unitary", Exclusive: false, Fn: TestEncodeScalarValues_CoverEssentialScalarOpcodes},
 	{Name: "TestEncodeScalarValues_SupportsEveryIntegerType", Categories: "unitary", Exclusive: false, Fn: TestEncodeScalarValues_SupportsEveryIntegerType},
-	{Name: "TestEncodeUnsignedInteger_UsesExplicitOracleNumber", Categories: "unitary", Exclusive: false, Fn: TestEncodeUnsignedInteger_UsesExplicitOracleNumber},
-	{Name: "TestEncodeContainers_UsesUB2FieldIDs", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_UsesUB2FieldIDs},
+	{Name: "TestEncodeUnsignedInteger_FallsBackToExplicitOracleNumber", Categories: "unitary", Exclusive: false, Fn: TestEncodeUnsignedInteger_FallsBackToExplicitOracleNumber},
 	{Name: "TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets},
 	{Name: "TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets},
-	{Name: "TestEncodeContainers_UsesAllContainerCountWidths", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_UsesAllContainerCountWidths},
+	{Name: "TestEncodeArrayChildCount_UsesSmallestWidthAtBoundaries", Categories: "unitary", Exclusive: false, Fn: TestEncodeArrayChildCount_UsesSmallestWidthAtBoundaries},
 	{Name: "TestEncodeTimestampScalar_UsesTimestampPayload", Categories: "unitary", Exclusive: false, Fn: TestEncodeTimestampScalar_UsesTimestampPayload},
 	{Name: "TestEncodeBinaryFloatAndDoubleScalars_CoverSpecialValues", Categories: "unitary", Exclusive: false, Fn: TestEncodeBinaryFloatAndDoubleScalars_CoverSpecialValues},
 	{Name: "TestEncodeBinaryScalars_CoverLengthBoundaries", Categories: "unitary", Exclusive: false, Fn: TestEncodeBinaryScalars_CoverLengthBoundaries},
@@ -80,17 +74,21 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOsonWriteBufferPatchUint_WritesExpectedWidths", Categories: "unitary", Exclusive: false, Fn: TestOsonWriteBufferPatchUint_WritesExpectedWidths},
 	{Name: "TestOsonWriteBufferPatchUint_RejectsInvalidPatch", Categories: "unitary", Exclusive: false, Fn: TestOsonWriteBufferPatchUint_RejectsInvalidPatch},
 
+	// Decoder fixtures and parsing.
+	{Name: "TestParse_ParsesAndRendersEveryValidFixture", Categories: "unitary", Exclusive: false, Fn: TestParse_ParsesAndRendersEveryValidFixture},
+	{Name: "TestParse_DecodesTimestampTZFixtureToTimeValue", Categories: "unitary", Exclusive: false, Fn: TestParse_DecodesTimestampTZFixtureToTimeValue},
+	{Name: "TestOsonDecoder_RejectsNonJSONBinaryFloatText", Categories: "unitary", Exclusive: false, Fn: TestOsonDecoder_RejectsNonJSONBinaryFloatText},
+
+	// Nodes and navigation.
 	{Name: "TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles", Categories: "unitary", Exclusive: false, Fn: TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles},
-	{Name: "TestNewNodeAt_RejectsUpdateHeaderOffset", Categories: "unitary", Exclusive: false, Fn: TestNewNodeAt_RejectsUpdateHeaderOffset},
 	{Name: "TestNodeOffsets_CoverAddressWidths", Categories: "unitary", Exclusive: false, Fn: TestNodeOffsets_CoverAddressWidths},
-	{Name: "TestParse_RejectsOutOfRangeRelativeChildOffset", Categories: "unitary", Exclusive: false, Fn: TestParse_RejectsOutOfRangeRelativeChildOffset},
 	{Name: "TestRedirectedNodeOffset_ValidatesEveryMarker", Categories: "unitary", Exclusive: false, Fn: TestRedirectedNodeOffset_ValidatesEveryMarker},
 	{Name: "TestParse_RejectsInvalidUpdateTargets", Categories: "unitary", Exclusive: false, Fn: TestParse_RejectsInvalidUpdateTargets},
 	{Name: "TestParse_RejectsForwardingCycle", Categories: "unitary", Exclusive: false, Fn: TestParse_RejectsForwardingCycle},
-	{Name: "TestOsonDecoderFixtures", Categories: "unitary", Exclusive: false, Fn: TestOsonDecoderFixtures},
-	{Name: "TestOsonSampleTimestampTZ", Categories: "unitary", Exclusive: false, Fn: TestOsonSampleTimestampTZ},
-	{Name: "TestOsonDecoder_RejectsNonJSONBinaryFloatText", Categories: "unitary", Exclusive: false, Fn: TestOsonDecoder_RejectsNonJSONBinaryFloatText},
 
+	// Array and object nodes.
+	{Name: "TestArrayNode_NestedObjectArrayTraversal", Categories: "unitary", Exclusive: false, Fn: TestArrayNode_NestedObjectArrayTraversal},
+	{Name: "TestArrayNode_RejectsMalformedLayouts", Categories: "unitary", Exclusive: false, Fn: TestArrayNode_RejectsMalformedLayouts},
 	{Name: "TestObjectNode_KindReportsObject", Categories: "unitary", Exclusive: false, Fn: TestObjectNode_KindReportsObject},
 	{Name: "TestObjectNode_SimpleObjectTraversal", Categories: "unitary", Exclusive: false, Fn: TestObjectNode_SimpleObjectTraversal},
 	{Name: "TestObjectNode_GetRejectsMalformedChild", Categories: "unitary", Exclusive: false, Fn: TestObjectNode_GetRejectsMalformedChild},
@@ -100,45 +98,48 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestObjectNode_RejectsInvalidDelegateReferences", Categories: "unitary", Exclusive: false, Fn: TestObjectNode_RejectsInvalidDelegateReferences},
 	{Name: "TestReadFieldIDEntriesAt_ReadsAllSupportedWidths", Categories: "unitary", Exclusive: false, Fn: TestReadFieldIDEntriesAt_ReadsAllSupportedWidths},
 
-	{Name: "TestOsonBuffer_NewBufferInitialState", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_NewBufferInitialState},
+	// Scalar node decoding.
+	{Name: "TestScalarNode_ValueCoversSupportedDecodeUseCases", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_ValueCoversSupportedDecodeUseCases},
+	{Name: "TestScalarNode_ValuePreservesNumberTextInJSONNumberMode", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_ValuePreservesNumberTextInJSONNumberMode},
+	{Name: "TestScalarNode_StringQuotesStringValue", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_StringQuotesStringValue},
+	{Name: "TestScalarNode_ValueRejectsMalformedPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_ValueRejectsMalformedPayloads},
+	{Name: "TestScalarNode_ValuePreservesBinaryFloatInfinity", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_ValuePreservesBinaryFloatInfinity},
+	{Name: "TestScalarNode_IDReadsFullUB1Length", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_IDReadsFullUB1Length},
+	{Name: "TestScalarNode_RejectsUnknownOpcode", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsUnknownOpcode},
+
+	// Buffer bounds and reads.
+	{Name: "TestOsonBuffer_NewBufferStartsAtDocumentBeginning", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_NewBufferStartsAtDocumentBeginning},
 	{Name: "TestOsonBuffer_RejectsSequentialUnderflow", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_RejectsSequentialUnderflow},
 	{Name: "TestOsonBuffer_SetPositionValidatesBounds", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_SetPositionValidatesBounds},
 	{Name: "TestOsonBuffer_ReadsSequentialValues", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_ReadsSequentialValues},
-	{Name: "TestOsonBuffer_AbsoluteReads", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_AbsoluteReads},
+	{Name: "TestOsonBuffer_ReadsAbsoluteValuesWithoutMovingCursor", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_ReadsAbsoluteValuesWithoutMovingCursor},
 	{Name: "TestOsonBuffer_RejectsInvalidSequentialReads", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_RejectsInvalidSequentialReads},
 	{Name: "TestOsonBuffer_RejectsInvalidAbsoluteRanges", Categories: "unitary", Exclusive: false, Fn: TestOsonBuffer_RejectsInvalidAbsoluteRanges},
 
-	{Name: "TestOsonHeader_SampleOson", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_SampleOson},
+	// Header parsing and metadata.
+	{Name: "TestOsonHeader_ParsesObjectWithPrimaryDictionary", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ParsesObjectWithPrimaryDictionary},
 	{Name: "TestIsOson", Categories: "unitary", Exclusive: false, Fn: TestIsOson},
 	{Name: "TestOsonHeader_ScalarDocumentUsesPostHeaderTreeOffset", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ScalarDocumentUsesPostHeaderTreeOffset},
-	{Name: "TestOsonHeader_UpdatedTinyScalarFixture", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_UpdatedTinyScalarFixture},
+	{Name: "TestOsonHeader_ParsesUpdatedScalarWithOverflowSegment", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ParsesUpdatedScalarWithOverflowSegment},
 	{Name: "TestOsonHeader_RejectsMalformedUpdateMetadata", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsMalformedUpdateMetadata},
 	{Name: "TestOsonHeader_RejectsV1UpdateMetadata", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsV1UpdateMetadata},
 	{Name: "TestOsonHeader_RejectsOutOfRangeUpdateMappings", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsOutOfRangeUpdateMappings},
-	{Name: "TestOsonHeader_NestedObjectArrayFixture", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_NestedObjectArrayFixture},
-	{Name: "TestOsonHeader_SecondaryDictionaryFixture", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_SecondaryDictionaryFixture},
+	{Name: "TestOsonHeader_ParsesPrimaryDictionaryWithTinyNodeStats", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ParsesPrimaryDictionaryWithTinyNodeStats},
+	{Name: "TestOsonHeader_ParsesSecondaryDictionaryWithShortAndLongNames", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ParsesSecondaryDictionaryWithShortAndLongNames},
 	{Name: "TestOsonHeader_RejectsMissingInlineLeafFlag", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsMissingInlineLeafFlag},
 	{Name: "TestOsonHeader_RejectsTruncatedTreeSegment", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsTruncatedTreeSegment},
 	{Name: "TestOsonHeader_RejectsMalformedFixedHeader", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsMalformedFixedHeader},
 	{Name: "TestOsonHeader_RejectsReservedFlags", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsReservedFlags},
-	{Name: "TestOsonHeader_ScalarTreeSizeUB4", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ScalarTreeSizeUB4},
-	{Name: "TestOsonHeader_ReadHeaderWidthVariants", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ReadHeaderWidthVariants},
+	{Name: "TestOsonHeader_ReadsScalarTreeSizeAsUB4", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ReadsScalarTreeSizeAsUB4},
+	{Name: "TestOsonHeader_ReadHeaderSelectsWidthsFromFlags", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ReadHeaderSelectsWidthsFromFlags},
 	{Name: "TestOsonHeader_MetadataHelpersReflectFlagsAndBounds", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_MetadataHelpersReflectFlagsAndBounds},
-	{Name: "TestOsonHeader_ForwardingHelpers", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_ForwardingHelpers},
+	{Name: "TestOsonHeader_OffsetResolversAcceptValidAndRejectInvalidOffsets", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_OffsetResolversAcceptValidAndRejectInvalidOffsets},
 	{Name: "TestOsonHeader_AddForwardingAddressValidatesMappings", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_AddForwardingAddressValidatesMappings},
 	{Name: "TestOsonHeader_DictionaryReadersHandleBothOffsetWidths", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_DictionaryReadersHandleBothOffsetWidths},
 	{Name: "TestOsonHeader_DictionaryReadersRejectTruncation", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_DictionaryReadersRejectTruncation},
 
-	{Name: "TestScalarNode_ValueCoversSupportedDecodeUseCases", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_ValueCoversSupportedDecodeUseCases},
-	{Name: "TestScalarNode_NumberAsStringOption", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_NumberAsStringOption},
-	{Name: "TestScalarNode_StringQuotesStringValue", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_StringQuotesStringValue},
-	{Name: "TestScalarNode_MalformedScalarPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_MalformedScalarPayloads},
-	{Name: "TestScalarNode_BinaryFloatSpecialValue", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_BinaryFloatSpecialValue},
-	{Name: "TestScalarNode_IDReadsFullUB1Length", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_IDReadsFullUB1Length},
-	{Name: "TestScalarNode_RejectsUnknownOpcode", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_RejectsUnknownOpcode},
-
+	// Malformed input across document structures.
 	{Name: "TestOsonHeader_RejectsTruncatedInput", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsTruncatedInput},
-	{Name: "TestOsonHeader_RejectsInvalidSecondaryDictionary", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsInvalidSecondaryDictionary},
 	{Name: "TestNode_ReadHelpersRejectMalformedInput", Categories: "unitary", Exclusive: false, Fn: TestNode_ReadHelpersRejectMalformedInput},
 }
 

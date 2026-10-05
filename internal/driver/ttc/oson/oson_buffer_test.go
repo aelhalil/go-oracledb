@@ -46,9 +46,9 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestOsonBuffer_NewBufferInitialState verifies that a new osonBuffer starts at the
-// beginning of the supplied document.
-func TestOsonBuffer_NewBufferInitialState(t *testing.T) {
+// TestOsonBuffer_NewBufferStartsAtDocumentBeginning verifies that a new
+// osonBuffer starts at the beginning of the supplied document.
+func TestOsonBuffer_NewBufferStartsAtDocumentBeginning(t *testing.T) {
 	buffer := newOsonBuffer(drvCommon.B1Array{0x01, 0x02, 0x03})
 
 	if got, want := buffer.position(), 0; got != want {
@@ -194,9 +194,9 @@ func TestOsonBuffer_ReadsSequentialValues(t *testing.T) {
 	}
 }
 
-// TestOsonBuffer_AbsoluteReads verifies absolute reads decode values without
-// changing the sequential cursor.
-func TestOsonBuffer_AbsoluteReads(t *testing.T) {
+// TestOsonBuffer_ReadsAbsoluteValuesWithoutMovingCursor verifies absolute reads
+// decode values without changing the sequential cursor.
+func TestOsonBuffer_ReadsAbsoluteValuesWithoutMovingCursor(t *testing.T) {
 	cases := []struct {
 		name string
 		data drvCommon.B1Array

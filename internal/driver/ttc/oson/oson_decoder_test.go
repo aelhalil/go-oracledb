@@ -42,6 +42,7 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,10 +50,11 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestOsonDecoderFixtures verifies that every valid database fixture parses and
-// materializes. Typed scalar rendering has separate coverage because its JSON
-// serialization contract differs from the decoded Go representation.
-func TestOsonDecoderFixtures(t *testing.T) {
+// TestParse_ParsesAndRendersEveryValidFixture verifies that every valid
+// database fixture parses and materializes. Typed scalar rendering has separate
+// coverage because its JSON serialization contract differs from the decoded Go
+// representation.
+func TestParse_ParsesAndRendersEveryValidFixture(t *testing.T) {
 	tests := []struct {
 		sample    osonSample
 		checkJSON bool
@@ -117,9 +119,9 @@ func TestOsonDecoderFixtures(t *testing.T) {
 	}
 }
 
-// TestOsonSampleTimestampTZ verifies the sample OSON bytes decode to the
-// timestamp string stored with that independent fixture.
-func TestOsonSampleTimestampTZ(t *testing.T) {
+// TestParse_DecodesTimestampTZFixtureToTimeValue verifies the sample OSON bytes
+// decode to the timestamp string stored with that independent fixture.
+func TestParse_DecodesTimestampTZFixtureToTimeValue(t *testing.T) {
 	root, err := Parse(sampleTimestampTZ.oson)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -179,11 +181,16 @@ func assertSameJSON(t *testing.T, got, want string) {
 	t.Helper()
 	// Compare parsed JSON values so the test does not depend on map key order
 	// or on insignificant formatting differences in the serialized document.
-	var gotValue, wantValue any
-	if err := json.Unmarshal([]byte(got), &gotValue); err != nil {
+	gotDecoder := json.NewDecoder(strings.NewReader(got))
+	gotDecoder.UseNumber()
+	var gotValue any
+	if err := gotDecoder.Decode(&gotValue); err != nil {
 		t.Fatalf("decoded text is invalid JSON: %v", err)
 	}
-	if err := json.Unmarshal([]byte(want), &wantValue); err != nil {
+	wantDecoder := json.NewDecoder(strings.NewReader(want))
+	wantDecoder.UseNumber()
+	var wantValue any
+	if err := wantDecoder.Decode(&wantValue); err != nil {
 		t.Fatalf("fixture JSON is invalid JSON: %v", err)
 	}
 	if !reflect.DeepEqual(gotValue, wantValue) {

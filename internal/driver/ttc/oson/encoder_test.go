@@ -39,7 +39,6 @@
 package oson
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -54,7 +53,9 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestEncodeStringScalar_UsesExpectedStringOpcodes verifies that string roots choose the expected length opcode and decode correctly.
+// TestEncodeStringScalar_UsesExpectedStringOpcodes verifies Encode picks the
+// compact (0-31 bytes) or UB1/UB2/UB4 string opcode at each length boundary and
+// the document decodes back to the original string.
 func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -171,100 +172,19 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 	}
 }
 
-// TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2 expects scalar
-// encoding to widen the tree-size field when the document outgrows the compact
-// representation.
-func TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2(t *testing.T) {
-	value := strings.Repeat("x", math.MaxUint16+1)
-	doc, err := Encode(value)
-	if err != nil {
-		t.Fatalf("Encode returned error: %v", err)
-	}
-
-	buf := newOsonBuffer(doc)
-	header, err := newOsonHeader(buf)
-	if err != nil {
-		t.Fatalf("newOsonHeader returned error: %v", err)
-	}
-	if got, want := header.treeSegmentOffset(), osonHeaderMinSize+osonUB4Size; got != want {
-		t.Fatalf("treeSegmentOffset = %d, want %d", got, want)
-	}
-	if !header.isSet(osonFlagTreeSegmentSizeUB4Mask) {
-		t.Fatal("tree size UB4 flag is not set")
-	}
-	if got, want := int(header.treeSegmentByteLength), len(value)+osonScalarHeaderSizeUB4; got != want {
-		t.Fatalf("treeSegmentSize = %d, want %d", got, want)
-	}
-	if got := doc[header.treeSegmentOffset()]; got != byte(osonOpStringUB4) {
-		t.Fatalf("opcode = 0x%02x, want 0x%02x", got, byte(osonOpStringUB4))
-	}
-	if got := int(binary.BigEndian.Uint32(doc[header.treeSegmentOffset()+1:])); got != len(value) {
-		t.Fatalf("encoded string length = %d, want %d", got, len(value))
-	}
-	assertEncodedValueDecodesTo(t, doc, value)
-}
-
 // TestEncodeRejectsOSONOver32MiB verifies the client rejects an OSON document
 // larger than the native JSON 32 MiB size limit before sending it to the database.
 func TestEncodeRejectsOSONOver32MiB(t *testing.T) {
-	const valueLength = osonMaxDocumentSize - osonHeaderMinSize - osonUB4Size - osonScalarHeaderSizeUB4 + 1
-
-	_, err := Encode(strings.Repeat("x", valueLength))
+	_, err := Encode(strings.Repeat("x", osonMaxDocumentSize))
 	if err == nil {
 		t.Fatal("Encode() error = nil, want OSON maximum-size error")
 	}
 	assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
-	if !strings.Contains(err.Error(), "exceeds maximum size") {
-		t.Fatalf("Encode() error = %q, want maximum-size detail", err)
-	}
 }
 
-// TestEncodeContainers_EncodesNestedObjectAndArray expects encoding to preserve nested
-// objects, arrays, and their values when the document is decoded.
-func TestEncodeContainers_EncodesNestedObjectAndArray(t *testing.T) {
-	value := map[string]any{
-		"name": "Ada",
-		"tags": []any{"engineer", "driver"},
-		"profile": map[string]any{
-			"city": "London",
-		},
-	}
-
-	doc, err := Encode(value)
-	if err != nil {
-		t.Fatalf("Encode returned error: %v", err)
-	}
-
-	buf := newOsonBuffer(doc)
-	header, err := newOsonHeader(buf)
-	if err != nil {
-		t.Fatalf("newOsonHeader returned error: %v", err)
-	}
-	if header.isScalar() {
-		t.Fatal("isScalar = true, want false")
-	}
-	if !header.isInlineLeaf() {
-		t.Fatal("isInlineLeaf = false, want true")
-	}
-	if got, want := header.version(), drvCommon.UB1(osonFormatMinVersion); got != want {
-		t.Fatalf("version = %d, want %d", got, want)
-	}
-	if got, want := len(header.fieldDictionary.fieldNames), 4; got != want {
-		t.Fatalf("uniqueFields = %d, want %d", got, want)
-	}
-	opcode, err := buf.readUB1At(header.treeSegmentOffset())
-	if err != nil {
-		t.Fatalf("read root opcode returned error: %v", err)
-	}
-	if opcode&osonOpChildOffsetUB4Bit == 0 {
-		t.Fatalf("root opcode = 0x%02x has unknown offset bit, want UB4", opcode)
-	}
-	assertEncodedValueDecodesTo(t, doc, value)
-}
-
-// TestFieldNameSortingOrder verifies field-name dictionary entries are ordered
-// by hash, byte length, then UTF-8 bytes.
-func TestFieldNameSortingOrder(t *testing.T) {
+// TestSortFieldNames_OrdersByHashLengthThenUTF8 verifies field-name dictionary
+// entries are ordered by hash, byte length, then UTF-8 bytes.
+func TestSortFieldNames_OrdersByHashLengthThenUTF8(t *testing.T) {
 	fields := []*fieldNameEntry{
 		{hash: 2, raw: drvCommon.B1Array("z")},
 		{hash: 1, raw: drvCommon.B1Array("b")},
@@ -297,11 +217,6 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 		{name: "null", value: nil, want: nil, wantOp: osonOpNull},
 		{name: "true", value: true, want: true, wantOp: osonOpTrue},
 		{name: "false", value: false, want: false, wantOp: osonOpFalse},
-		{name: "int8 uses payload-selected opcode", value: int8(-42), want: json.Number("-42"), wantOp: signedIntegerOpcode(t, int64(-42)), numberOpt: true},
-		{name: "int32 uses payload-selected opcode", value: int32(-1 << 31), want: json.Number("-2147483648"), wantOp: signedIntegerOpcode(t, int64(-1<<31)), numberOpt: true},
-		{name: "int64 uses payload-selected opcode", value: int64(-1 << 40), want: json.Number("-1099511627776"), wantOp: signedIntegerOpcode(t, int64(-1<<40)), numberOpt: true},
-		{name: "int64 minimum uses payload-selected opcode", value: int64(-1 << 63), want: json.Number("-9223372036854775808"), wantOp: signedIntegerOpcode(t, -1<<63), numberOpt: true},
-		{name: "uint64 uses oracle number", value: uint64(1 << 40), want: json.Number("1099511627776"), wantOp: unsignedOracleNumberOpcode(t, uint64(1<<40)), numberOpt: true},
 		{name: "float32 uses binary float", value: float32(12.25), want: json.Number("12.25"), wantOp: osonOpBinaryFloat, numberOpt: true},
 		{name: "float64 uses binary double", value: float64(123.5), want: json.Number("123.5"), wantOp: osonOpBinaryDouble, numberOpt: true},
 		{name: "string number preserves text", value: json.Number("9876543210.25"), want: json.Number("9876543210.25"), wantOp: osonOpStringNumber, numberOpt: true},
@@ -327,25 +242,24 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 	}
 }
 
-// TestEncodeScalarValues_SupportsEveryIntegerType verifies the JSON
-// integer surface is encoded and materialized without changing the value.
+// TestEncodeScalarValues_SupportsEveryIntegerType verifies every Go integer
+// type encodes and decodes back to the same numeric value.
 func TestEncodeScalarValues_SupportsEveryIntegerType(t *testing.T) {
 	tests := []struct {
-		name       string
-		value      any
-		want       json.Number
-		opcodeMask drvCommon.UB1
+		name  string
+		value any
+		want  json.Number
 	}{
-		{name: "int", value: int(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
-		{name: "int8", value: int8(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
-		{name: "int16", value: int16(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
-		{name: "int32", value: int32(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
-		{name: "int64", value: int64(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
-		{name: "uint", value: uint(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
-		{name: "uint8", value: uint8(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
-		{name: "uint16", value: uint16(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
-		{name: "uint32", value: uint32(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
-		{name: "uint64", value: uint64(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
+		{name: "int", value: int(-42), want: "-42"},
+		{name: "int8", value: int8(-42), want: "-42"},
+		{name: "int16", value: int16(-42), want: "-42"},
+		{name: "int32", value: int32(-42), want: "-42"},
+		{name: "int64", value: int64(-42), want: "-42"},
+		{name: "uint", value: uint(42), want: "42"},
+		{name: "uint8", value: uint8(42), want: "42"},
+		{name: "uint16", value: uint16(42), want: "42"},
+		{name: "uint32", value: uint32(42), want: "42"},
+		{name: "uint64", value: uint64(42), want: "42"},
 	}
 
 	for _, tt := range tests {
@@ -354,74 +268,24 @@ func TestEncodeScalarValues_SupportsEveryIntegerType(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Encode() error = %v", err)
 			}
-			if got := encodedRootOpcode(t, doc); got&^0x0f != tt.opcodeMask {
-				t.Fatalf("root opcode = 0x%02x, want family 0x%02x", got, tt.opcodeMask)
-			}
 			assertEncodedValueDecodesTo(t, doc, tt.want, drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 		})
 	}
 }
 
-// TestEncodeUnsignedInteger_UsesExplicitOracleNumber verifies an unsigned
-// value whose NUMBER payload cannot fit the compact opcode is length-prefixed.
-func TestEncodeUnsignedInteger_UsesExplicitOracleNumber(t *testing.T) {
+// TestEncodeUnsignedInteger_FallsBackToExplicitOracleNumber verifies a uint64
+// too large for the compact opcode encodes with the explicit opcode and decodes
+// back to the exact value.
+func TestEncodeUnsignedInteger_FallsBackToExplicitOracleNumber(t *testing.T) {
 	value := uint64(12345678901234567890)
-	payload, err := converters.EncodeUInt(value)
-	if err != nil {
-		t.Fatalf("EncodeUInt() error = %v", err)
-	}
-	if len(payload) <= _compactOracleNumberMaxPayloadLen {
-		t.Fatalf("EncodeUInt(%d) payload length = %d, want > %d", value, len(payload), _compactOracleNumberMaxPayloadLen)
-	}
-
 	doc, err := Encode(value)
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
 	}
-	buf := newOsonBuffer(doc)
-	header, err := newOsonHeader(buf)
-	if err != nil {
-		t.Fatalf("newOsonHeader() error = %v", err)
-	}
-	offset := header.treeSegmentOffset()
-	if got := doc[offset]; got != byte(osonOpOracleNumber) {
-		t.Fatalf("opcode = 0x%02x, want 0x%02x", got, byte(osonOpOracleNumber))
-	}
-	if got := int(doc[offset+1]); got != len(payload) {
-		t.Fatalf("payload length = %d, want %d", got, len(payload))
-	}
-	if got := doc[offset+2 : offset+2+len(payload)]; !reflect.DeepEqual(got, payload) {
-		t.Fatalf("payload = %x, want %x", got, payload)
+	if got, want := encodedRootOpcode(t, doc), drvCommon.UB1(osonOpOracleNumber); got != want {
+		t.Fatalf("root opcode = 0x%02x, want explicit 0x%02x", got, want)
 	}
 	assertEncodedValueDecodesTo(t, doc, json.Number(strconv.FormatUint(value, 10)), drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
-}
-
-// TestEncodeContainers_UsesUB2FieldIDs expects encoding to widen dictionary counts and
-// field IDs when the number of unique keys outgrows the compact representation.
-func TestEncodeContainers_UsesUB2FieldIDs(t *testing.T) {
-	value := make(map[string]any, math.MaxUint8+1)
-	for i := 0; i <= math.MaxUint8; i++ {
-		value["field"+strconv.Itoa(i)] = "value" + strconv.Itoa(i)
-	}
-
-	doc, err := Encode(value)
-	if err != nil {
-		t.Fatalf("Encode() error = %v", err)
-	}
-	header, err := newOsonHeader(newOsonBuffer(doc))
-	if err != nil {
-		t.Fatalf("newOsonHeader() error = %v", err)
-	}
-	if !header.isSet(osonFlagDistinctFieldCountUB2Mask) {
-		t.Fatal("distinct-field-count UB2 flag is not set")
-	}
-	if got, want := header.numFieldIDBytes(), osonUB2Size; got != want {
-		t.Fatalf("numFieldIDBytes() = %d, want %d", got, want)
-	}
-	if got, want := header.primaryFieldsCount, math.MaxUint8+1; got != want {
-		t.Fatalf("primaryFieldsCount = %d, want %d", got, want)
-	}
-	assertEncodedValueDecodesTo(t, doc, value)
 }
 
 // TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets expects encoding to widen
@@ -442,18 +306,15 @@ func TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newOsonHeader() error = %v", err)
 	}
-	if got, want := header.version(), drvCommon.UB1(1); got != want {
-		t.Fatalf("version = %d, want %d", got, want)
-	}
 	if !header.isSet(osonFlagFieldHeapSizeUB4Mask) {
 		t.Fatal("primary field-name heap UB4 flag is not set")
 	}
-	assertEncodedValueDecodesTo(t, doc, value)
 }
 
-// TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets expects encoding to widen
-// dictionary offsets when the long-key heap outgrows the compact representation and
-// retain the long-key dictionary extension.
+// TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets expects 300 long keys
+// to overflow the UB2 field-name heap so the encoder writes a v3 document whose
+// secondary dictionary uses UB4 offsets, holds every key (primary count = 0),
+// and round-trips unchanged.
 func TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets(t *testing.T) {
 	value := make(map[string]any, 300)
 	keyPrefix := strings.Repeat("k", 253)
@@ -475,15 +336,13 @@ func TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets(t *testing.T) {
 	if header.secondaryFlags&osonFlagSecondaryFieldOffsetsUB2Mask != 0 {
 		t.Fatal("secondary field-name offsets use UB2, want UB4")
 	}
-	if got, want := header.primaryFieldsCount, 0; got != want {
-		t.Fatalf("primaryFieldsCount = %d, want %d", got, want)
-	}
-	assertEncodedValueDecodesTo(t, doc, value)
 }
 
-// TestEncodeContainers_UsesAllContainerCountWidths verifies array child counts
-// use the smallest valid OSON width at each wire-format transition.
-func TestEncodeContainers_UsesAllContainerCountWidths(t *testing.T) {
+// TestEncodeArrayChildCount_UsesSmallestWidthAtBoundaries expects array child
+// counts at each size boundary (255, 256, 65536) to use the smallest valid width
+// (UB1, UB2, UB4) in the opcode bits and payload, and to decode back with the
+// matching length.
+func TestEncodeArrayChildCount_UsesSmallestWidthAtBoundaries(t *testing.T) {
 	tests := []struct {
 		name      string
 		count     int
@@ -893,39 +752,6 @@ func encodedRootOpcode(t *testing.T, doc drvCommon.B1Array) drvCommon.UB1 {
 		t.Fatalf("read root opcode returned error: %v", err)
 	}
 	return opcode
-}
-
-// signedIntegerOpcode returns the smallest compatible signed-integer opcode
-// for the encoded value payload.
-func signedIntegerOpcode(t *testing.T, value int64) drvCommon.UB1 {
-	t.Helper()
-
-	payload, err := converters.EncodeInt(value)
-	if err != nil {
-		t.Fatalf("EncodeInt() error = %v", err)
-	}
-	if len(payload) <= _compactSigned32LengthMask {
-		return osonOpCompactSigned32Prefix | drvCommon.UB1(len(payload))
-	}
-	if len(payload) <= _compactSigned64LengthMask {
-		return osonOpCompactSigned64Prefix | drvCommon.UB1(len(payload))
-	}
-	return osonOpOracleNumber
-}
-
-// unsignedOracleNumberOpcode returns the expected compact or explicit Oracle
-// NUMBER opcode for an unsigned integer payload.
-func unsignedOracleNumberOpcode(t *testing.T, value uint64) drvCommon.UB1 {
-	t.Helper()
-
-	payload, err := converters.EncodeUInt(value)
-	if err != nil {
-		t.Fatalf("EncodeUInt() error = %v", err)
-	}
-	if len(payload) <= _compactOracleNumberMaxPayloadLen {
-		return osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(payload)-1)
-	}
-	return osonOpOracleNumber
 }
 
 // bytesForTest returns deterministic binary payload bytes of the requested

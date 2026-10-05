@@ -339,9 +339,10 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 	}
 }
 
-// TestScalarNode_NumberAsStringOption verifies that numeric scalar opcodes honor
-// JSONNumberAsJSONNumber by preserving their textual numeric representation.
-func TestScalarNode_NumberAsStringOption(t *testing.T) {
+// TestScalarNode_ValuePreservesNumberTextInJSONNumberMode verifies that numeric
+// scalar opcodes honor JSONNumberAsJSONNumber by preserving their textual
+// numeric representation.
+func TestScalarNode_ValuePreservesNumberTextInJSONNumberMode(t *testing.T) {
 	decimalNumberPayload, _ := converters.EncodeFloat(12.75)
 	arrayDecimalPayload, _ := converters.EncodeFloat(8.25)
 	decimalScalePayload, _ := converters.EncodeFloat(12345.6789)
@@ -426,9 +427,9 @@ func TestScalarNode_StringQuotesStringValue(t *testing.T) {
 	}
 }
 
-// TestScalarNode_MalformedScalarPayloads verifies that malformed scalar
+// TestScalarNode_ValueRejectsMalformedPayloads verifies that malformed scalar
 // payloads fail with the expected Oracle error codes.
-func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
+func TestScalarNode_ValueRejectsMalformedPayloads(t *testing.T) {
 	tests := []struct {
 		name    string
 		payload drvCommon.B1Array
@@ -618,9 +619,9 @@ func assertOracleErrorCode(t *testing.T, err error, want oracleErrors.ErrorCode)
 	}
 }
 
-// TestScalarNode_BinaryFloatSpecialValue verifies that binary float decoding
-// preserves special IEEE values such as positive infinity.
-func TestScalarNode_BinaryFloatSpecialValue(t *testing.T) {
+// TestScalarNode_ValuePreservesBinaryFloatInfinity verifies that binary float
+// decoding preserves special IEEE values such as positive infinity.
+func TestScalarNode_ValuePreservesBinaryFloatInfinity(t *testing.T) {
 	payload, _ := converters.EncodeBinaryFloat(float32(math.Inf(1)))
 	node := newScalarNodeAt(
 		newOsonBuffer(append(drvCommon.B1Array{osonOpBinaryFloat}, payload...)),
