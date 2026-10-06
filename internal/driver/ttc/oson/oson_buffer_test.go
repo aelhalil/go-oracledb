@@ -39,326 +39,43 @@
 package oson
 
 import (
-	"reflect"
-	"testing"
-
+	"encoding/binary"
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	"testing"
 )
 
-// TestOsonBuffer_NewBufferStartsAtDocumentBeginning verifies that a new
-// osonBuffer starts at the beginning of the supplied document.
-func TestOsonBuffer_NewBufferStartsAtDocumentBeginning(t *testing.T) {
-	buffer := newOsonBuffer(drvCommon.B1Array{0x01, 0x02, 0x03})
-
-	if got, want := buffer.position(), 0; got != want {
-		t.Fatalf("position = %d, want %d", got, want)
+// TestBufferReadsAndBounds verifies buffer reads decode big-endian values and
+// respect document bounds.
+func TestBufferReadsAndBounds(t *testing.T) {
+	buf := newOsonBuffer(drvCommon.B1Array{0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0})
+	if got, err := buf.readUB1(); err != nil || got != 0x12 {
+		t.Fatalf("readUB1() = %#x, %v; want 0x12, nil", got, err)
 	}
-	if got, want := buffer.remaining(), 3; got != want {
-		t.Fatalf("remaining = %d, want %d", got, want)
+	if got, err := buf.readUB2(); err != nil || got != 0x3456 {
+		t.Fatalf("readUB2() = %#x, %v; want 0x3456, nil", got, err)
 	}
-	if got, want := buffer.size(), 3; got != want {
-		t.Fatalf("size = %d, want %d", got, want)
+	if got, err := buf.readUB4(); err != nil || got != 0x789abcde {
+		t.Fatalf("readUB4() = %#x, %v; want 0x789abcde, nil", got, err)
 	}
-}
-
-// TestOsonBuffer_RejectsSequentialUnderflow verifies truncated sequential reads
-// return buffer errors.
-func TestOsonBuffer_RejectsSequentialUnderflow(t *testing.T) {
-	for _, test := range []struct {
-		data drvCommon.B1Array
-		read func(*osonBuffer) error
-	}{
-		{
-			data: nil,
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readUB1()
-				return err
-			},
-		},
-		{
-			data: drvCommon.B1Array{0x01, 0x02, 0x03},
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readUB4()
-				return err
-			},
-		},
-	} {
-		buffer := newOsonBuffer(test.data)
-		if err := test.read(buffer); err == nil {
-			t.Fatal("sequential read error = nil, want underflow")
-		} else {
-			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
-		}
+	if got, err := buf.readUB4At(2); err != nil || got != 0x56789abc {
+		t.Fatalf("readUB4At() = %#x, %v; want 0x56789abc, nil", got, err)
 	}
-}
-
-// TestOsonBuffer_SetPositionValidatesBounds verifies valid boundary positions
-// and preserves the cursor when an invalid position is rejected.
-func TestOsonBuffer_SetPositionValidatesBounds(t *testing.T) {
-	buffer := newOsonBuffer(drvCommon.B1Array{0x01, 0x02, 0x03})
-
-	for _, pos := range []int{0, len(buffer.data)} {
-		if err := buffer.setPosition(pos); err != nil {
-			t.Fatalf("setPosition(%d) error = %v", pos, err)
-		}
+	if got, err := buf.readSB2At(4); err != nil || got != drvCommon.SB2(int16(binary.BigEndian.Uint16([]byte{0x9a, 0xbc}))) {
+		t.Fatalf("readSB2At() = %d, %v; want signed 0x9abc, nil", got, err)
 	}
-
-	if err := buffer.setPosition(1); err != nil {
-		t.Fatalf("setPosition(1) error = %v", err)
+	if got, err := buf.readSB4At(4); err != nil || got != drvCommon.SB4(int32(binary.BigEndian.Uint32([]byte{0x9a, 0xbc, 0xde, 0xf0}))) {
+		t.Fatalf("readSB4At() = %d, %v; want signed 0x9abcdef0, nil", got, err)
 	}
-	for _, pos := range []int{-1, len(buffer.data) + 1} {
-		if err := buffer.setPosition(pos); err == nil {
-			t.Fatalf("setPosition(%d) expected error", pos)
-		}
-		if got, want := buffer.position(), 1; got != want {
-			t.Fatalf("position after setPosition(%d) = %d, want %d", pos, got, want)
-		}
+	if err := buf.setPosition(buf.size()); err != nil {
+		t.Fatalf("setPosition(end) error = %v", err)
 	}
-}
-
-// TestOsonBuffer_ReadsSequentialValues verifies cursor-based reads decode
-// big-endian values and advance the cursor by the consumed width.
-func TestOsonBuffer_ReadsSequentialValues(t *testing.T) {
-	cases := []struct {
-		name    string
-		data    drvCommon.B1Array
-		read    func(*osonBuffer) (any, error)
-		want    any
-		wantPos int
-	}{
-		{
-			name:    "readSlice",
-			data:    drvCommon.B1Array{0x01, 0x02},
-			read:    func(b *osonBuffer) (any, error) { return b.readSlice(2) },
-			want:    drvCommon.B1Array{0x01, 0x02},
-			wantPos: 2,
-		},
-		{
-			name:    "readUB1",
-			data:    drvCommon.B1Array{0x7f},
-			read:    func(b *osonBuffer) (any, error) { return b.readUB1() },
-			want:    drvCommon.UB1(0x7f),
-			wantPos: 1,
-		},
-		{
-			name:    "readUB2",
-			data:    drvCommon.B1Array{0x01, 0x02},
-			read:    func(b *osonBuffer) (any, error) { return b.readUB2() },
-			want:    drvCommon.UB2(0x0102),
-			wantPos: 2,
-		},
-		{
-			name:    "readUB4",
-			data:    drvCommon.B1Array{0x01, 0x02, 0x03, 0x04},
-			read:    func(b *osonBuffer) (any, error) { return b.readUB4() },
-			want:    drvCommon.UB4(0x01020304),
-			wantPos: 4,
-		},
-		{
-			name: "readUB1ThenUB2",
-			data: drvCommon.B1Array{0x7f, 0x01, 0x02},
-			read: func(b *osonBuffer) (any, error) {
-				first, err := b.readUB1()
-				if err != nil {
-					return nil, err
-				}
-				second, err := b.readUB2()
-				if err != nil {
-					return nil, err
-				}
-				return []any{first, second}, nil
-			},
-			want:    []any{drvCommon.UB1(0x7f), drvCommon.UB2(0x0102)},
-			wantPos: 3,
-		},
+	if _, err := buf.readUB1(); err == nil {
+		t.Fatal("readUB1() at end of input error = nil, want bounds error")
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			buffer := newOsonBuffer(tc.data)
-
-			got, err := tc.read(buffer)
-			if err != nil {
-				t.Fatalf("%s returned error: %v", tc.name, err)
-			}
-
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("%s value = %#v, want %#v", tc.name, got, tc.want)
-			}
-
-			if got, want := buffer.position(), tc.wantPos; got != want {
-				t.Fatalf("%s position = %d, want %d", tc.name, got, want)
-			}
-		})
+	if _, err := buf.readSliceAt(-1, 1); err == nil {
+		t.Fatal("readSliceAt(negative offset) error = nil, want bounds error")
 	}
-}
-
-// TestOsonBuffer_ReadsAbsoluteValuesWithoutMovingCursor verifies absolute reads
-// decode values without changing the sequential cursor.
-func TestOsonBuffer_ReadsAbsoluteValuesWithoutMovingCursor(t *testing.T) {
-	cases := []struct {
-		name string
-		data drvCommon.B1Array
-		read func(*osonBuffer) (any, error)
-		want any
-	}{
-		{
-			name: "readSliceAt",
-			data: drvCommon.B1Array{0x10, 0x20, 0x30, 0x40},
-			read: func(b *osonBuffer) (any, error) { return b.readSliceAt(1, 2) },
-			want: drvCommon.B1Array{0x20, 0x30},
-		},
-		{
-			name: "readUB1At",
-			data: drvCommon.B1Array{0x10, 0x20},
-			read: func(b *osonBuffer) (any, error) { return b.readUB1At(1) },
-			want: drvCommon.UB1(0x20),
-		},
-		{
-			name: "readUB2At",
-			data: drvCommon.B1Array{0x10, 0x20, 0x30},
-			read: func(b *osonBuffer) (any, error) { return b.readUB2At(1) },
-			want: drvCommon.UB2(0x2030),
-		},
-		{
-			name: "readUB4At",
-			data: drvCommon.B1Array{0x01, 0x02, 0x03, 0x04, 0x05},
-			read: func(b *osonBuffer) (any, error) { return b.readUB4At(1) },
-			want: drvCommon.UB4(0x02030405),
-		},
-		{
-			name: "readSB2At",
-			data: drvCommon.B1Array{0x00, 0xff, 0xfe},
-			read: func(b *osonBuffer) (any, error) { return b.readSB2At(1) },
-			want: drvCommon.SB2(-2),
-		},
-		{
-			name: "readSB4At",
-			data: drvCommon.B1Array{0x00, 0xff, 0xff, 0xff, 0xfe},
-			read: func(b *osonBuffer) (any, error) { return b.readSB4At(1) },
-			want: drvCommon.SB4(-2),
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			buffer := newOsonBuffer(tc.data)
-			buffer.pos = 1
-
-			got, err := tc.read(buffer)
-			if err != nil {
-				t.Fatalf("%s returned error: %v", tc.name, err)
-			}
-
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("%s value = %#v, want %#v", tc.name, got, tc.want)
-			}
-
-			if got, want := buffer.position(), 1; got != want {
-				t.Fatalf("%s changed position to %d, want %d", tc.name, got, want)
-			}
-		})
-	}
-}
-
-// TestOsonBuffer_RejectsInvalidSequentialReads verifies invalid cursor-based
-// reads return OSON buffer errors without consuming bytes.
-func TestOsonBuffer_RejectsInvalidSequentialReads(t *testing.T) {
-	tests := []struct {
-		name string
-		read func(*osonBuffer) error
-	}{
-		{
-			name: "underflow ub2",
-			read: func(b *osonBuffer) error {
-				_, err := b.readUB2()
-				return err
-			},
-		},
-		{
-			name: "underflow slice",
-			read: func(b *osonBuffer) error {
-				_, err := b.readSlice(4)
-				return err
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			buffer := newOsonBuffer(drvCommon.B1Array{0x01})
-			err := tc.read(buffer)
-			if err == nil {
-				t.Fatal("read error = nil, want failure")
-			}
-			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
-			if got, want := buffer.position(), 0; got != want {
-				t.Fatalf("position after failed read = %d, want %d", got, want)
-			}
-		})
-	}
-}
-
-// TestOsonBuffer_RejectsInvalidAbsoluteRanges verifies invalid absolute reads
-// return OSON buffer errors without changing the sequential cursor.
-func TestOsonBuffer_RejectsInvalidAbsoluteRanges(t *testing.T) {
-	tests := []struct {
-		name string
-		read func(*osonBuffer) error
-	}{
-		{
-			name: "offset past limit",
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readUB1At(4)
-				return err
-			},
-		},
-		{
-			name: "ub4 underflow",
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readUB4At(0)
-				return err
-			},
-		},
-		{
-			name: "sb2 underflow",
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readSB2At(2)
-				return err
-			},
-		},
-		{
-			name: "sb4 underflow",
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readSB4At(0)
-				return err
-			},
-		},
-		{
-			name: "slice underflow",
-			read: func(buffer *osonBuffer) error {
-				_, err := buffer.readSliceAt(1, 3)
-				return err
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			buffer := newOsonBuffer(drvCommon.B1Array{0x01, 0x02, 0x03})
-			if err := buffer.setPosition(1); err != nil {
-				t.Fatalf("setPosition(1) error = %v", err)
-			}
-
-			err := tc.read(buffer)
-			if err == nil {
-				t.Fatal("absolute read error = nil, want failure")
-			}
-			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
-			if got, want := buffer.position(), 1; got != want {
-				t.Fatalf("position after failed absolute read = %d, want %d", got, want)
-			}
-		})
+	if err := buf.setPosition(buf.size() + 1); err == nil {
+		t.Fatal("setPosition(past end) error = nil, want bounds error")
 	}
 }

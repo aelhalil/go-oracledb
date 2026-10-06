@@ -36,7 +36,6 @@
 ** SOFTWARE.
  */
 
-// oson_samples_test.go contains OSON test fixtures.
 package oson
 
 import (
@@ -47,7 +46,7 @@ import (
 
 // osonSample is an OSON bytes sample.
 type osonSample struct {
-	// name identifies the fixture.
+	// name identifies the sample.
 	name string
 	// json is the expected JSON text.
 	json string
@@ -55,7 +54,7 @@ type osonSample struct {
 	oson drvCommon.B1Array
 }
 
-// cloneOSON returns a copy of the fixture bytes.
+// cloneOSON returns a copy of the sample bytes.
 func (sample osonSample) cloneOSON() drvCommon.B1Array {
 	return append(drvCommon.B1Array(nil), sample.oson...)
 }

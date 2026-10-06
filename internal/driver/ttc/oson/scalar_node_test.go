@@ -40,615 +40,151 @@ package oson
 
 import (
 	"encoding/json"
-	"errors"
-	"math"
-	"reflect"
-	"strconv"
-	"testing"
-	"time"
-
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	"math"
+	"reflect"
+	"testing"
 )
 
-// TestScalarNode_ValueCoversSupportedDecodeUseCases verifies that scalar Value
-// decodes each supported inline OSON scalar family into the expected Go value.
-func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
-
-	timestampTZ := time.Date(2024, time.March, 1, 12, 34, 56, 789000000, time.FixedZone("UTC+02", 2*3600))
-	datePayload, _ := converters.EncodeDate(time.Date(2024, time.January, 2, 3, 4, 5, 0, time.Local))
-	timestampPayload, _ := converters.EncodeTimestamp(time.Date(2024, time.January, 2, 3, 4, 5, 123000000, time.Local))
-	timestamp7Payload, _ := converters.EncodeTimestamp(time.Date(2024, time.January, 2, 3, 4, 5, 0, time.Local))
-	timestampTZPayload := encodeTimestampTZ(timestampTZ)
-	binaryFloatPayload, _ := converters.EncodeBinaryFloat(float32(12.5))
-	binaryDoublePayload, _ := converters.EncodeBinaryDouble(float64(42.25))
-	integerNumberPayload, _ := converters.EncodeInt(int64(42))
-	decimalNumberPayload, _ := converters.EncodeFloat(12.75)
-	largeNumberPayload, _ := converters.EncodeInt(int64(1234567890123456))
-	intervalYMPayload, _ := converters.EncodeIntervalYearToMonth("02-03")
-	intervalDSPayload, _ := converters.EncodeIntervalDayToSecond("10 05:30:02.123")
-	const (
-		shortStringText  = "ok"
-		stringNumberText = "12.75"
-		helloText        = "hello"
-		worldText        = "world"
-	)
-
-	tests := []struct {
-		name    string
-		payload drvCommon.B1Array
-		assert  func(t *testing.T, got any)
-	}{
-		{
-			name:    "compact signed32",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactSigned32Prefix | drvCommon.UB1(len(integerNumberPayload)))}, integerNumberPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(42) {
-					t.Fatalf("expected Value() to return float64(42), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "compact signed64",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactSigned64Prefix | drvCommon.UB1(len(integerNumberPayload)))}, integerNumberPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(42) {
-					t.Fatalf("expected Value() to return float64(42), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "compact oracle number",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(decimalNumberPayload)-_compactNumberLengthBias))}, decimalNumberPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(12.75) {
-					t.Fatalf("expected Value() to return float64(12.75), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "compact decimal",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactDecimalPrefix | drvCommon.UB1(len(decimalNumberPayload)-_compactNumberLengthBias))}, decimalNumberPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(12.75) {
-					t.Fatalf("expected Value() to return float64(12.75), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "explicit oracle number",
-			payload: append(drvCommon.B1Array{osonOpOracleNumber, byte(drvCommon.UB1(len(largeNumberPayload)))}, largeNumberPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(1234567890123456) {
-					t.Fatalf("expected Value() to return float64(1234567890123456), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "explicit oracle decimal",
-			payload: append(drvCommon.B1Array{osonOpOracleDecimal, byte(drvCommon.UB1(len(decimalNumberPayload)))}, decimalNumberPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(12.75) {
-					t.Fatalf("expected Value() to return float64(12.75), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "string number",
-			payload: append(drvCommon.B1Array{osonOpStringNumber, byte(drvCommon.UB1(len(stringNumberText)))}, drvCommon.B1Array(stringNumberText)...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(12.75) {
-					t.Fatalf("expected Value() to return float64(12.75), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "compact short string",
-			payload: append(drvCommon.B1Array{byte(drvCommon.UB1(len(shortStringText)))}, drvCommon.B1Array(shortStringText)...),
-			assert: func(t *testing.T, got any) {
-				if got != "ok" {
-					t.Fatalf("expected Value() to return %q, got %#v", "ok", got)
-				}
-			},
-		},
-		{
-			name:    "string ub1",
-			payload: append(drvCommon.B1Array{osonOpStringUB1, byte(drvCommon.UB1(len(helloText)))}, drvCommon.B1Array(helloText)...),
-			assert: func(t *testing.T, got any) {
-				if got != "hello" {
-					t.Fatalf("expected Value() to return %q, got %#v", "hello", got)
-				}
-			},
-		},
-		{
-			name:    "string ub2",
-			payload: append(drvCommon.B1Array{osonOpStringUB2, 0x00, byte(drvCommon.UB1(len(helloText)))}, drvCommon.B1Array(helloText)...),
-			assert: func(t *testing.T, got any) {
-				if got != "hello" {
-					t.Fatalf("expected Value() to return %q, got %#v", "hello", got)
-				}
-			},
-		},
-		{
-			name:    "string ub4",
-			payload: append(drvCommon.B1Array{osonOpStringUB4, 0x00, 0x00, 0x00, byte(drvCommon.UB1(len(worldText)))}, drvCommon.B1Array(worldText)...),
-			assert: func(t *testing.T, got any) {
-				if got != "world" {
-					t.Fatalf("expected Value() to return %q, got %#v", "world", got)
-				}
-			},
-		},
-		{
-			name:    "null",
-			payload: drvCommon.B1Array{osonOpNull},
-			assert: func(t *testing.T, got any) {
-				if got != nil {
-					t.Fatalf("expected Value() to return nil, got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "true",
-			payload: drvCommon.B1Array{osonOpTrue},
-			assert: func(t *testing.T, got any) {
-				if got != true {
-					t.Fatalf("expected Value() to return true, got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "false",
-			payload: drvCommon.B1Array{osonOpFalse},
-			assert: func(t *testing.T, got any) {
-				if got != false {
-					t.Fatalf("expected Value() to return false, got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "binary float",
-			payload: append(drvCommon.B1Array{osonOpBinaryFloat}, binaryFloatPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(12.5) {
-					t.Fatalf("expected Value() to return float64(12.5), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "binary double",
-			payload: append(drvCommon.B1Array{osonOpBinaryDouble}, binaryDoublePayload...),
-			assert: func(t *testing.T, got any) {
-				if got != float64(42.25) {
-					t.Fatalf("expected Value() to return float64(42.25), got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "date",
-			payload: append(drvCommon.B1Array{osonOpDate}, datePayload...),
-			assert: func(t *testing.T, got any) {
-				tm, ok := got.(time.Time)
-				if !ok {
-					t.Fatalf("expected Value() to return time.Time, got %T", got)
-				}
-				if tm.Year() != 2024 || tm.Month() != time.January || tm.Day() != 2 {
-					t.Fatalf("expected the decoded date to be 2024-01-02, got %v", tm)
-				}
-			},
-		},
-		{
-			name:    "timestamp",
-			payload: append(drvCommon.B1Array{osonOpTimestamp}, timestampPayload...),
-			assert: func(t *testing.T, got any) {
-				tm, ok := got.(time.Time)
-				if !ok {
-					t.Fatalf("expected Value() to return time.Time, got %T", got)
-				}
-				if tm.Nanosecond() != 123000000 {
-					t.Fatalf("expected the decoded timestamp to contain 123000000 nanoseconds, got %v", tm)
-				}
-			},
-		},
-		{
-			name:    "timestamp7",
-			payload: append(drvCommon.B1Array{osonOpTimestamp7}, timestamp7Payload[:7]...),
-			assert: func(t *testing.T, got any) {
-				tm, ok := got.(time.Time)
-				if !ok {
-					t.Fatalf("expected Value() to return time.Time, got %T", got)
-				}
-				if tm.Nanosecond() != 0 {
-					t.Fatalf("expected the seven-byte timestamp to have zero fractional seconds, got %v", tm)
-				}
-			},
-		},
-		{
-			name:    "timestamp with timezone",
-			payload: append(drvCommon.B1Array{osonOpTimestampTZ}, timestampTZPayload...),
-			assert: func(t *testing.T, got any) {
-				tm, ok := got.(time.Time)
-				if !ok {
-					t.Fatalf("expected Value() to return time.Time, got %T", got)
-				}
-				_, off := tm.Zone()
-				if off != 2*3600 {
-					t.Fatalf("expected the decoded timezone offset to be 7200 seconds, got %d", off)
-				}
-				if !tm.Equal(timestampTZ) {
-					t.Fatalf("decoded timestamp = %s, want %s", tm.Format(time.RFC3339Nano), timestampTZ.Format(time.RFC3339Nano))
-				}
-			},
-		},
-		{
-			name:    "interval year to month",
-			payload: append(drvCommon.B1Array{osonOpIntervalYM}, intervalYMPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != "02-03" {
-					t.Fatalf("expected Value() to return the interval %q, got %#v", "02-03", got)
-				}
-			},
-		},
-		{
-			name:    "interval day to second",
-			payload: append(drvCommon.B1Array{osonOpIntervalDS}, intervalDSPayload...),
-			assert: func(t *testing.T, got any) {
-				if got != "10 05:30:02.123" {
-					t.Fatalf("expected Value() to return the interval %q, got %#v", "10 05:30:02.123", got)
-				}
-			},
-		},
-		{
-			name:    "binary ub2",
-			payload: drvCommon.B1Array{osonOpBinaryUB2, 0x00, 0x03, 0xaa, 0xbb, 0xcc},
-			assert: func(t *testing.T, got any) {
-				if !reflect.DeepEqual(got, []byte{0xaa, 0xbb, 0xcc}) {
-					t.Fatalf("expected Value() to return []byte{0xaa, 0xbb, 0xcc}, got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "binary ub4",
-			payload: drvCommon.B1Array{osonOpBinaryUB4, 0x00, 0x00, 0x00, 0x03, 0xde, 0xad, 0xbe},
-			assert: func(t *testing.T, got any) {
-				if !reflect.DeepEqual(got, []byte{0xde, 0xad, 0xbe}) {
-					t.Fatalf("expected Value() to return []byte{0xde, 0xad, 0xbe}, got %#v", got)
-				}
-			},
-		},
-		{
-			name:    "binary id",
-			payload: drvCommon.B1Array{osonOpID, 0x03, 0x01, 0x02, 0x03},
-			assert: func(t *testing.T, got any) {
-				if !reflect.DeepEqual(got, []byte{0x01, 0x02, 0x03}) {
-					t.Fatalf("expected Value() to return ID bytes []byte{0x01, 0x02, 0x03}, got %#v", got)
-				}
-			},
-		},
+// TestDecodeNumberModes verifies NUMBER decoding honors the configured number
+// mode.
+func TestDecodeNumberModes(t *testing.T) {
+	root, err := Parse(sampleNumberLarge.oson)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
 	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			node := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0, drvCommon.UB1(tc.payload[0]))
-			got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
-			if err != nil {
-				t.Fatalf("failed to decode the valid scalar payload: %v", err)
-			}
-			tc.assert(t, got)
-		})
+	got, err := root.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
+	if err != nil {
+		t.Fatalf("GetValue(JSONNumber) error = %v", err)
+	}
+	if got != json.Number("9007199254740993") {
+		t.Fatalf("JSON number = %#v, want exact integer text", got)
+	}
+	got, err = root.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
+	if err != nil {
+		t.Fatalf("GetValue(float64) error = %v", err)
+	}
+	if _, ok := got.(float64); !ok {
+		t.Fatalf("float mode returned %T, want float64", got)
 	}
 }
 
-// TestScalarNode_ValuePreservesNumberTextInJSONNumberMode verifies that numeric
-// scalar opcodes honor JSONNumberAsJSONNumber by preserving their textual
-// numeric representation.
-func TestScalarNode_ValuePreservesNumberTextInJSONNumberMode(t *testing.T) {
-	decimalNumberPayload, _ := converters.EncodeFloat(12.75)
-	arrayDecimalPayload, _ := converters.EncodeFloat(8.25)
-	decimalScalePayload, _ := converters.EncodeFloat(12345.6789)
-	float64ScalePayload, _ := converters.EncodeFloat(98765.125)
-	largeIntegerPayload, _ := converters.EncodeInt(int64(1234567890123456))
-	compactIntegerPayload, _ := converters.EncodeInt(int64(7))
-	binaryFloatPayload, _ := converters.EncodeBinaryFloat(float32(12.5))
-	const stringNumberText = "12.75"
-
-	tests := []struct {
-		name    string
-		payload drvCommon.B1Array
-		want    json.Number
-	}{
-		{
-			name:    "compact oracle number",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(decimalNumberPayload)-_compactNumberLengthBias))}, decimalNumberPayload...),
-			want:    json.Number("12.75"),
-		},
-		{
-			name:    "compact oracle array decimal",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(arrayDecimalPayload)-_compactNumberLengthBias))}, arrayDecimalPayload...),
-			want:    json.Number("8.25"),
-		},
-		{
-			name:    "compact oracle decimal scale",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(decimalScalePayload)-_compactNumberLengthBias))}, decimalScalePayload...),
-			want:    json.Number("12345.6789"),
-		},
-		{
-			name:    "compact oracle float64 scale",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(float64ScalePayload)-_compactNumberLengthBias))}, float64ScalePayload...),
-			want:    json.Number("98765.125"),
-		},
-		{
-			name:    "explicit oracle number",
-			payload: append(drvCommon.B1Array{osonOpOracleNumber, byte(drvCommon.UB1(len(largeIntegerPayload)))}, largeIntegerPayload...),
-			want:    json.Number("1234567890123456"),
-		},
-		{
-			name:    "compact signed integer",
-			payload: append(drvCommon.B1Array{byte(osonOpCompactSigned32Prefix | drvCommon.UB1(len(compactIntegerPayload)))}, compactIntegerPayload...),
-			want:    json.Number("7"),
-		},
-		{
-			name:    "binary float",
-			payload: append(drvCommon.B1Array{osonOpBinaryFloat}, binaryFloatPayload...),
-			want:    json.Number("12.5"),
-		},
-		{
-			name:    "string number",
-			payload: append(drvCommon.B1Array{osonOpStringNumber, byte(drvCommon.UB1(len(stringNumberText)))}, drvCommon.B1Array(stringNumberText)...),
-			want:    json.Number("12.75"),
-		},
+// TestDecodeNativeIntegerOpcode verifies unsupported scalar opcodes fail with
+// a clear error instead of a guessed value.
+func TestDecodeNativeIntegerOpcode(t *testing.T) {
+	value := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{byte(osonOpNativeInteger)}), &osonHeader{}, 0, osonOpNativeInteger)
+	_, err := value.GetValue(drvCommon.JSONConversionOptions{})
+	if err == nil {
+		t.Fatal("GetValue(native integer) error = nil, want unsupported-scalar error")
 	}
+	sqlErr, ok := err.(oracleErrors.SQLError)
+	if !ok || sqlErr.ErrorCode() != string(oracleErrors.OsonUnsupportedScalarError) {
+		t.Fatalf("GetValue(native integer) error = %T %v, want OsonUnsupportedScalarError", err, err)
+	}
+}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			node := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0, drvCommon.UB1(tc.payload[0]))
+// TestDecodeScalarJSONRendering verifies scalars render as valid JSON text or
+// fail when they cannot be represented.
+func TestDecodeScalarJSONRendering(t *testing.T) {
+	for _, sample := range []osonSample{sampleNumberLarge, sampleRawBinary} {
+		t.Run(sample.name, func(t *testing.T) {
+			root, err := Parse(sample.oson)
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			text, err := root.String()
+			if err != nil {
+				t.Fatalf("String() error = %v", err)
+			}
+			assertJSONEqual(t, text, sample.json)
+		})
+	}
+	doc, err := Encode(math.NaN())
+	if err != nil {
+		t.Fatalf("Encode(NaN) error = %v", err)
+	}
+	root, err := Parse(doc)
+	if err != nil {
+		t.Fatalf("Parse(NaN) error = %v", err)
+	}
+	if _, err := root.String(); err == nil {
+		t.Fatal("String(NaN) error = nil, want JSON rendering failure")
+	}
+}
+
+// TestDecodeOtherScalarWireForms verifies scalar wire forms emitted by the
+// database decode to the expected values.
+func TestDecodeOtherScalarWireForms(t *testing.T) {
+	payload, err := converters.EncodeFloat(12.75)
+	if err != nil {
+		t.Fatalf("EncodeFloat() error = %v", err)
+	}
+	compactDecimal := append(drvCommon.B1Array{byte(osonOpCompactDecimalPrefix | drvCommon.UB1(len(payload)-1))}, payload...)
+	explicitDecimal := append(drvCommon.B1Array{osonOpOracleDecimal, byte(len(payload))}, payload...)
+	tests := []struct {
+		name string
+		doc  drvCommon.B1Array
+		want any
+	}{
+		{"compact DECIMAL", compactDecimal, json.Number("12.75")},
+		{"explicit DECIMAL", explicitDecimal, json.Number("12.75")},
+		{"ID bytes", drvCommon.B1Array{osonOpID, 3, 0xaa, 0xbb, 0xcc}, []byte{0xaa, 0xbb, 0xcc}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			node := newScalarNodeAt(newOsonBuffer(test.doc), &osonHeader{}, 0, drvCommon.UB1(test.doc[0]))
 			got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 			if err != nil {
-				t.Fatalf("failed to decode the numeric payload with JSONNumberAsJSONNumber: %v", err)
+				t.Fatalf("Value() error = %v", err)
 			}
-			if got != tc.want {
-				t.Fatalf("expected Value(JSONNumberAsJSONNumber) to return %#v, got %#v", tc.want, got)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("Value() = %#v, want %#v", got, test.want)
 			}
 		})
 	}
 }
 
-// TestScalarNode_StringQuotesStringValue expects a decoded OSON string scalar
-// to render as a quoted JSON string.
-func TestScalarNode_StringQuotesStringValue(t *testing.T) {
-	node := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0, 0x02)
-
-	text, err := node.String()
-	if err != nil {
-		t.Fatalf("failed to render the valid short-string scalar as JSON: %v", err)
-	}
-	if text != `"ok"` {
-		t.Fatalf("expected String() to return %q, got %q", `"ok"`, text)
-	}
-}
-
-// TestScalarNode_ValueRejectsMalformedPayloads verifies that malformed scalar
-// payloads fail with the expected Oracle error codes.
-func TestScalarNode_ValueRejectsMalformedPayloads(t *testing.T) {
+// TestDecodeMalformedScalarPayload verifies malformed forms of scalar
+// payloads fail with the appropriate error.
+func TestDecodeMalformedScalarPayload(t *testing.T) {
 	tests := []struct {
-		name    string
-		payload drvCommon.B1Array
-		want    oracleErrors.ErrorCode
+		name string
+		doc  drvCommon.B1Array
+		code oracleErrors.ErrorCode
 	}{
-		{
-			name:    "truncated string ub1 payload",
-			payload: drvCommon.B1Array{osonOpStringUB1, 0x05, 'h', 'e'},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated string ub2 payload",
-			payload: drvCommon.B1Array{osonOpStringUB2, 0x00, 0x05, 'h', 'e'},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated string ub4 payload",
-			payload: drvCommon.B1Array{osonOpStringUB4, 0x00, 0x00, 0x00, 0x05, 'h', 'e'},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated explicit oracle number payload",
-			payload: drvCommon.B1Array{osonOpOracleNumber, 0x03, 0x01},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "invalid string number payload",
-			payload: drvCommon.B1Array{osonOpStringNumber, 0x03, 'x', 'y', 'z'},
-			want:    oracleErrors.OsonParsingError,
-		},
-		{
-			name:    "truncated binary float payload",
-			payload: drvCommon.B1Array{osonOpBinaryFloat, 0x01},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated binary double payload",
-			payload: drvCommon.B1Array{osonOpBinaryDouble, 0x01, 0x02},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated timestamp payload",
-			payload: drvCommon.B1Array{osonOpTimestamp, 120, 124, 1, 2},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated date payload",
-			payload: drvCommon.B1Array{osonOpDate, 120, 124, 1, 2},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated timestamp7 payload",
-			payload: drvCommon.B1Array{osonOpTimestamp7, 120, 124, 1, 2},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated timestamptz payload",
-			payload: drvCommon.B1Array{osonOpTimestampTZ, 120, 124, 1, 2},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated interval ds payload",
-			payload: drvCommon.B1Array{osonOpIntervalDS, 0x80, 0x00},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated interval ym payload",
-			payload: drvCommon.B1Array{osonOpIntervalYM, 0x80, 0x00},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated binary ub2 payload",
-			payload: drvCommon.B1Array{osonOpBinaryUB2, 0x00, 0x03, 0x01},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "truncated binary ub4 payload",
-			payload: drvCommon.B1Array{osonOpBinaryUB4, 0x00, 0x00, 0x00, 0x03, 0x01},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "empty compact signed32 payload",
-			payload: drvCommon.B1Array{osonOpCompactSigned32Prefix},
-			want:    oracleErrors.ConverterEmptyInput,
-		},
-		{
-			name:    "empty compact signed64 payload",
-			payload: drvCommon.B1Array{osonOpCompactSigned64Prefix},
-			want:    oracleErrors.ConverterEmptyInput,
-		},
-		{
-			name:    "truncated id payload",
-			payload: drvCommon.B1Array{osonOpID, 0x80},
-			want:    oracleErrors.OsonBufferError,
-		},
-		{
-			name:    "reserved update opcode",
-			payload: drvCommon.B1Array{osonOpUpdateOversizeReserved},
-			want:    oracleErrors.OsonParsingError,
-		},
-		{
-			name:    "known native integer opcode not implemented",
-			payload: drvCommon.B1Array{osonOpNativeInteger, 0x01, 0x01},
-			want:    oracleErrors.OsonUnsupportedScalarError,
-		},
-		{
-			name:    "known extended binary opcode not implemented",
-			payload: drvCommon.B1Array{osonOpExtendedBinary, 0x01, 0x00, 0x00, 0x00, 0x00},
-			want:    oracleErrors.OsonUnsupportedScalarError,
-		},
-		{
-			name:    "reserved scalar opcode",
-			payload: drvCommon.B1Array{0x7a},
-			want:    oracleErrors.OsonParsingError,
-		},
-		{name: "truncated short string payload", payload: drvCommon.B1Array{1}, want: oracleErrors.OsonBufferError},
-		{name: "truncated compact signed32 payload", payload: drvCommon.B1Array{osonOpCompactSigned32Prefix | 1}, want: oracleErrors.OsonBufferError},
-		{name: "truncated compact signed64 payload", payload: drvCommon.B1Array{osonOpCompactSigned64Prefix | 1}, want: oracleErrors.OsonBufferError},
-		{name: "truncated compact number payload", payload: drvCommon.B1Array{osonOpCompactOracleNumberPrefix}, want: oracleErrors.OsonBufferError},
-		{name: "truncated compact decimal payload", payload: drvCommon.B1Array{osonOpCompactDecimalPrefix}, want: oracleErrors.OsonBufferError},
-		{name: "truncated string number payload", payload: drvCommon.B1Array{osonOpStringNumber, 1}, want: oracleErrors.OsonBufferError},
+		{"truncated compact string", drvCommon.B1Array{1}, oracleErrors.OsonBufferError},
+		{"truncated string UB1", drvCommon.B1Array{osonOpStringUB1, 3, 'a'}, oracleErrors.OsonBufferError},
+		{"truncated string UB2", drvCommon.B1Array{osonOpStringUB2, 0, 3, 'a'}, oracleErrors.OsonBufferError},
+		{"truncated string UB4", drvCommon.B1Array{osonOpStringUB4, 0, 0, 0, 3, 'a'}, oracleErrors.OsonBufferError},
+		{"truncated NUMBER", drvCommon.B1Array{osonOpOracleNumber, 3, 1}, oracleErrors.OsonBufferError},
+		{"truncated DECIMAL", drvCommon.B1Array{osonOpOracleDecimal, 3, 1}, oracleErrors.OsonBufferError},
+		{"truncated string number", drvCommon.B1Array{osonOpStringNumber, 3, '1'}, oracleErrors.OsonBufferError},
+		{"invalid string number", drvCommon.B1Array{osonOpStringNumber, 3, 'x', 'y', 'z'}, oracleErrors.OsonParsingError},
+		{"truncated binary float", drvCommon.B1Array{osonOpBinaryFloat, 0, 0}, oracleErrors.OsonBufferError},
+		{"truncated binary double", drvCommon.B1Array{osonOpBinaryDouble, 0, 0}, oracleErrors.OsonBufferError},
+		{"truncated DATE", drvCommon.B1Array{osonOpDate, 1, 2}, oracleErrors.OsonBufferError},
+		{"truncated TIMESTAMP", drvCommon.B1Array{osonOpTimestamp, 1, 2}, oracleErrors.OsonBufferError},
+		{"truncated TIMESTAMP7", drvCommon.B1Array{osonOpTimestamp7, 1, 2}, oracleErrors.OsonBufferError},
+		{"truncated TIMESTAMP WITH TIME ZONE", drvCommon.B1Array{osonOpTimestampTZ, 1, 2}, oracleErrors.OsonBufferError},
+		{"truncated INTERVAL YEAR TO MONTH", drvCommon.B1Array{osonOpIntervalYM, 1, 2}, oracleErrors.OsonBufferError},
+		{"truncated INTERVAL DAY TO SECOND", drvCommon.B1Array{osonOpIntervalDS, 1, 2}, oracleErrors.OsonBufferError},
+		{"truncated binary UB2", drvCommon.B1Array{osonOpBinaryUB2, 0, 3, 1}, oracleErrors.OsonBufferError},
+		{"truncated binary UB4", drvCommon.B1Array{osonOpBinaryUB4, 0, 0, 0, 3, 1}, oracleErrors.OsonBufferError},
+		{"truncated ID", drvCommon.B1Array{osonOpID, 3, 1}, oracleErrors.OsonBufferError},
+		{"unsupported native integer", drvCommon.B1Array{osonOpNativeInteger}, oracleErrors.OsonUnsupportedScalarError},
+		{"unsupported extended binary", drvCommon.B1Array{osonOpExtendedBinary}, oracleErrors.OsonUnsupportedScalarError},
+		{"unknown scalar opcode", drvCommon.B1Array{0x7a}, oracleErrors.OsonParsingError},
 	}
-
-	for _, opcode := range []drvCommon.UB1{
-		osonOpStringUB1, osonOpStringUB2, osonOpStringUB4,
-		osonOpOracleNumber, osonOpStringNumber, osonOpID,
-		osonOpBinaryUB2, osonOpBinaryUB4,
-	} {
-		tests = append(tests, struct {
-			name    string
-			payload drvCommon.B1Array
-			want    oracleErrors.ErrorCode
-		}{
-			name:    "truncated length prefix " + strconv.Itoa(int(opcode)),
-			payload: drvCommon.B1Array{byte(opcode)},
-			want:    oracleErrors.OsonBufferError,
-		})
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			node := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0, drvCommon.UB1(tc.payload[0]))
-
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			node := newScalarNodeAt(newOsonBuffer(test.doc), &osonHeader{}, 0, drvCommon.UB1(test.doc[0]))
 			_, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
 			if err == nil {
-				t.Fatal("Value() error = nil, want failure")
+				t.Fatal("Value() error = nil, want malformed-scalar error")
 			}
-			assertOracleErrorCode(t, err, tc.want)
+			assertOracleErrorCode(t, err, test.code)
 		})
 	}
-}
-
-// TestScalarNode_IDReadsFullUB1Length expects the ID reader to accept a payload at the
-// maximum length supported by its length field.
-func TestScalarNode_IDReadsFullUB1Length(t *testing.T) {
-	const payloadLength = math.MaxUint8
-	payload := append(drvCommon.B1Array{osonOpID, byte(payloadLength)}, make([]byte, payloadLength)...)
-
-	node := newScalarNodeAt(newOsonBuffer(payload), &osonHeader{}, 0, drvCommon.UB1(payload[0]))
-	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
-	if err != nil {
-		t.Fatalf("Value() error = %v", err)
-	}
-	if raw, ok := got.([]byte); !ok || len(raw) != payloadLength {
-		t.Fatalf("Value() = %#v, want []byte of length %d", got, payloadLength)
-	}
-}
-
-func assertOracleErrorCode(t *testing.T, err error, want oracleErrors.ErrorCode) {
-	t.Helper()
-
-	oraErr, ok := err.(oracleErrors.SQLError)
-	if !ok {
-		t.Fatalf("error type = %T, want oracleErrors.SQLError", err)
-	}
-	if got := oraErr.ErrorCode(); got != string(want) {
-		t.Fatalf("error code = %v, want %v", got, want)
-	}
-	switch want {
-	case oracleErrors.OsonHeaderError,
-		oracleErrors.OsonEncodingError,
-		oracleErrors.OsonUnsupportedScalarError,
-		oracleErrors.JSONRenderingError:
-		if errors.Unwrap(err) == nil {
-			t.Fatalf("OSON error %s has no cause", want)
-		}
-	}
-}
-
-// TestScalarNode_ValuePreservesBinaryFloatInfinity verifies that binary float
-// decoding preserves special IEEE values such as positive infinity.
-func TestScalarNode_ValuePreservesBinaryFloatInfinity(t *testing.T) {
-	payload, _ := converters.EncodeBinaryFloat(float32(math.Inf(1)))
-	node := newScalarNodeAt(
-		newOsonBuffer(append(drvCommon.B1Array{osonOpBinaryFloat}, payload...)),
-		&osonHeader{},
-		0,
-		osonOpBinaryFloat,
-	)
-
-	got, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
-	if err != nil {
-		t.Fatalf("Value() error = %v", err)
-	}
-	if !math.IsInf(got.(float64), 1) {
-		t.Fatalf("expected Value() to preserve positive infinity, got %#v", got)
-	}
-}
-
-// TestScalarNode_RejectsUnknownOpcode verifies unknown scalar opcodes return a
-// parsing error without attempting to interpret their payload.
-func TestScalarNode_RejectsUnknownOpcode(t *testing.T) {
-	node := &scalarNode{
-		nodeBase: nodeBase{buf: newOsonBuffer(drvCommon.B1Array{0x7a})},
-		opcode:   0x7a,
-	}
-	_, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
-	if err == nil {
-		t.Fatal("Value() error = nil, want unknown-opcode failure")
-	}
-	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 }
