@@ -132,10 +132,10 @@ type osonHeader struct {
 
 // newOsonHeader parses the metadata at the start of an OSON document.
 //
-// Input:
+// Parameters:
 //   - buffer: document buffer positioned at the OSON fixed header.
 //
-// Output:
+// Returns:
 //   - A populated header and buffer positioned at the primary tree segment.
 //
 // Errors:
@@ -230,7 +230,7 @@ func (h *osonHeader) initialize(buf *osonBuffer) error {
 // readOptionalUpdateHeader parses the update-header tail when bytes remain after
 // the primary tree segment.
 //
-// Input:
+// Parameters:
 //   - buf: buffer containing the primary tree followed, optionally, by update metadata.
 //
 // Errors:
@@ -393,10 +393,10 @@ func (h *osonHeader) addForwardingAddress(from, to, extendedTreeSize int) error 
 
 // readHeader decodes only the fixed-width and flag-controlled header prefix.
 //
-// Input:
+// Parameters:
 //   - buf: buffer positioned at the OSON magic and version word.
 //
-// Output:
+// Returns:
 //   - Layout metadata used by dictionary readers.
 //
 // Errors:
@@ -580,7 +580,7 @@ func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (drvCommon.UB4, error)
 //  2. Heap-offset array
 //  3. Heap bytes containing 1-byte-length-prefixed UTF-8 names
 //
-// Input:
+// Parameters:
 //   - buf: buffer positioned at the primary dictionary hash array.
 //   - layout: counts and heap sizes read from the fixed header; primaryCount is positive.
 //
@@ -646,7 +646,7 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 //  2. Heap-offset array (2 or 4 bytes per entry depending on flags)
 //  3. Heap bytes containing 2-byte-length-prefixed UTF-8 names
 //
-// Input:
+// Parameters:
 //   - buf: buffer positioned at the secondary dictionary hash array.
 //   - layout: metadata from a v3+ header with a positive secondaryCount.
 //
@@ -708,7 +708,7 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 
 // readPrimaryHashes reads count sorted UB1 hashes for the short-key dictionary.
 //
-// Output:
+// Returns:
 //   - Compact on-wire hash values widened to uint32 for uniform lookup.
 //
 // Errors:
@@ -759,7 +759,7 @@ func (h *osonHeader) readPrimaryOffsets(buf *osonBuffer, count int) ([]int, erro
 
 // readSecondaryHashes reads count sorted UB2 hashes for the long-key dictionary.
 //
-// Output:
+// Returns:
 //   - Compact on-wire hash values widened to uint32 for uniform lookup.
 //
 // Errors:
@@ -832,7 +832,7 @@ func (h *osonHeader) fieldsSorted() bool {
 
 // numFieldIDBytes returns the size used by encoded object field-ID entries.
 //
-// Output:
+// Returns:
 //   - The field-ID width in bytes: UB1, UB2, or UB4.
 func (h *osonHeader) numFieldIDBytes() int {
 	switch {
@@ -862,10 +862,10 @@ func (h *osonHeader) version() drvCommon.UB1 {
 
 // fieldName returns a field name by zero-based dictionary index.
 //
-// Input:
+// Parameters:
 //   - fid: zero-based index into the merged primary-then-secondary dictionary.
 //
-// Output:
+// Returns:
 //   - The matching name and true, or an empty string and false when fid is invalid.
 func (h *osonHeader) fieldName(fid int) (string, bool) {
 	return h.fieldDictionary.fieldNameAt(fid)
@@ -873,7 +873,7 @@ func (h *osonHeader) fieldName(fid int) (string, bool) {
 
 // treeSegmentOffset returns the absolute document offset of the primary tree segment.
 //
-// Output:
+// Returns:
 //   - Zero-based byte offset from the start of the OSON document.
 func (h *osonHeader) treeSegmentOffset() int {
 	return h.treeSegmentStartOffset
@@ -886,10 +886,10 @@ func (h *osonHeader) treeSegmentOffset() int {
 // segment. Nodes redirected into the extended tree use the extended tree as
 // their local address space instead.
 //
-// Input:
+// Parameters:
 //   - absoluteOffset: zero-based byte offset of the node in the OSON document.
 //
-// Output:
+// Returns:
 //   - Absolute start offset of the node's containing tree segment.
 func (h *osonHeader) segmentOffsetForNode(absoluteOffset int) int {
 	if h.extendedTreeSegmentStartOffset != 0 && absoluteOffset >= h.extendedTreeSegmentStartOffset {
@@ -914,10 +914,10 @@ func (h *osonHeader) containsNodeOffset(absoluteOffset int) bool {
 
 // resolveForwardedOffset maps one extended-tree-relative offset to an absolute document offset.
 //
-// Input:
+// Parameters:
 //   - relativeOffset: byte offset relative to the extended tree segment start.
 //
-// Output:
+// Returns:
 //   - Absolute document offset of the forwarded node.
 //
 // Errors:
@@ -934,10 +934,10 @@ func (h *osonHeader) resolveForwardedOffset(relativeOffset int) (int, error) {
 // resolveOverflowOffset maps one primary-tree absolute node offset through the
 // overflow-address mapping into the extended tree segment.
 //
-// Input:
+// Parameters:
 //   - absoluteOffset: byte offset of an overflow node in the primary tree segment.
 //
-// Output:
+// Returns:
 //   - Absolute document offset of the mapped node in the extended tree segment.
 //
 // Errors:
@@ -958,10 +958,10 @@ func (h *osonHeader) resolveOverflowOffset(absoluteOffset int) (int, error) {
 
 // osonHash computes the full 32-bit FNV-derived field-name hash.
 //
-// Input:
+// Parameters:
 //   - key: UTF-8 field name to hash.
 //
-// Output:
+// Returns:
 //   - Full hash before tier compaction and the key's UTF-8 byte length.
 func osonHash(key string) (uint32, int) {
 	// Hash the UTF-8 bytes directly so field lookup matches the on-wire format.
@@ -975,11 +975,11 @@ func osonHash(key string) (uint32, int) {
 
 // compactPrimaryHash truncates a full field-name hash to a primary-tier width.
 //
-// Input:
+// Parameters:
 //   - hash: full 32-bit OSON field-name hash.
 //   - width: requested compact width in bytes.
 //
-// Output:
+// Returns:
 //   - Low width bytes of hash for UB1 or UB2; otherwise the original hash.
 func compactPrimaryHash(hash uint32, size int) uint32 {
 	switch size {
@@ -994,10 +994,10 @@ func compactPrimaryHash(hash uint32, size int) uint32 {
 
 // compactSecondaryHash produces the secondary-tier UB2 hash layout used on the wire.
 //
-// Input:
+// Parameters:
 //   - hash: full 32-bit OSON field-name hash.
 //
-// Output:
+// Returns:
 //   - Low two bytes in the byte-swapped order required by the secondary dictionary.
 func compactSecondaryHash(hash uint32) uint32 {
 	return ((hash & 0xff) << 8) | ((hash & 0xff00) >> 8)

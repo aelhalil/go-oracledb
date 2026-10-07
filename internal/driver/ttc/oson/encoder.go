@@ -60,11 +60,11 @@ const (
 
 // Encode converts a supported Go value to an OSON document.
 //
-// Input:
+// Parameters:
 //   - nil, bool, string, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64,
 //     float32, float64, []byte, time.Time, json.Number, map[string]any, []any.
 //
-// Output:
+// Returns:
 // - drvCommon.B1Array containing the encoded OSON document.
 //
 // Errors:

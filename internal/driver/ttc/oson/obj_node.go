@@ -68,13 +68,13 @@ type objectNode struct {
 
 // newObjectNodeAt parses one object node at offset and returns *objectNode.
 //
-// Input:
+// Parameters:
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - offset: absolute document offset of the object node.
 //   - opcode: object opcode already read and classified by newNodeAt.
 //
-// Output:
+// Returns:
 //   - *objectNode: OSON object node.
 //
 // Errors:
@@ -129,13 +129,13 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drv
 
 // readFieldIDEntriesAt expands one encoded field-id array into []int.
 //
-// Input:
+// Parameters:
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - start: absolute offset of the field-id array.
 //   - count: number of field IDs to read.
 //
-// Output:
+// Returns:
 //   - decoded field IDs in member order.
 //
 // Errors:
@@ -207,13 +207,13 @@ func readFieldIDEntriesAt(buf *osonBuffer, header *osonHeader, start, count int)
 //   - absolute location of the field-id array
 //   - absolute location of this object's child-offset array
 //
-// Input:
+// Parameters:
 //   - `buf`: OSON document reader
 //   - `header`: parsed OSON header metadata
 //   - `offset`: absolute offset of the object opcode
 //   - `opcode`: object opcode already read at `offset`
 //
-// Output:
+// Returns:
 //   - `count`: number of logical object members
 //   - `fidArrayStart`: absolute offset of the field-id array to read
 //   - `childArrayStart`: absolute offset of this object's child-offset array
@@ -290,10 +290,10 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 
 // Kind implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - none.
 //
-// Output:
+// Returns:
 //   - drvCommon.KindObject.
 //
 // Errors:
@@ -304,10 +304,10 @@ func (obj *objectNode) Kind() drvCommon.Kind {
 
 // GetValue implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - opts: JSON materialization options.
 //
-// Output:
+// Returns:
 //   - the fully materialized object.
 //
 // Errors:
@@ -318,10 +318,10 @@ func (obj *objectNode) GetValue(opts drvCommon.JSONConversionOptions) (any, erro
 
 // String implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - opts: JSON materialization options.
 //
-// Output:
+// Returns:
 //   - JSON text for the object.
 //
 // Errors:
@@ -359,10 +359,10 @@ func (obj *objectNode) MarshalJSON() ([]byte, error) {
 
 // Get implements the JSONObjectNode interface.
 //
-// Input:
+// Parameters:
 //   - key: object field name.
 //
-// Output:
+// Returns:
 //   - child node or nil.
 //   - key resolving success
 //
@@ -387,10 +387,10 @@ func (obj *objectNode) Get(key string) (drvCommon.JSONNode, bool) {
 
 // Len implements the JSONObjectNode interface.
 //
-// Input:
+// Parameters:
 //   - none.
 //
-// Output:
+// Returns:
 //   - number of object members.
 //
 // Errors:
@@ -401,10 +401,10 @@ func (obj *objectNode) Len() int {
 
 // Keys implements the JSONObjectNode interface.
 //
-// Input:
+// Parameters:
 //   - none.
 //
-// Output:
+// Returns:
 //   - member names in unspecified order.
 //
 // Errors:
@@ -419,10 +419,10 @@ func (obj *objectNode) Keys() []string {
 
 // Value implements the JSONObjectNode interface.
 //
-// Input:
+// Parameters:
 //   - opts: JSON materialization options.
 //
-// Output:
+// Returns:
 //   - fully materialized object as map[string]any.
 //
 // Errors:

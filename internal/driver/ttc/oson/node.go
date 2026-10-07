@@ -51,10 +51,10 @@ import (
 
 // Parse creates the lazy root OSON node for a document.
 //
-// Input:
+// Parameters:
 //   - data: complete OSON document bytes.
 //
-// Output:
+// Returns:
 //   - root JSONNode for the document.
 //
 // Errors:
@@ -140,10 +140,10 @@ type nodeBase struct {
 
 // IsOson reports whether data starts with the OSON magic/version prefix.
 //
-// Input:
+// Parameters:
 //   - data: candidate OSON document bytes.
 //
-// Output:
+// Returns:
 //   - true when the prefix matches an OSON document.
 //
 // Errors:
@@ -160,12 +160,12 @@ func IsOson(data drvCommon.B1Array) bool {
 // It reads the node opcode, resolves forwarding records, then dispatches to
 // the object, array, or scalar constructor.
 //
-// Input:
+// Parameters:
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - offset: absolute document offset of the node.
 //
-// Output:
+// Returns:
 //   - JSONNode for the resolved node.
 //
 // Errors:
@@ -313,7 +313,7 @@ func readContainerCountAt(buf *osonBuffer, offset int, opcode drvCommon.UB1) (co
 
 // readChildOffsetsAt decodes the child-offset table into absolute document offsets.
 //
-// Input:
+// Parameters:
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - containerOffset: absolute offset of the containing node.
@@ -321,7 +321,7 @@ func readContainerCountAt(buf *osonBuffer, offset int, opcode drvCommon.UB1) (co
 //   - count: number of child offsets to decode.
 //   - opcode: containing array or object opcode.
 //
-// Output:
+// Returns:
 //   - absolute child-node offsets in wire order.
 //
 // Errors:
@@ -356,14 +356,14 @@ func ensureNodeTableRange(buf *osonBuffer, start, count, width int, stage string
 
 // readChildOffsetAt decodes one child-offset entry into an absolute document offset.
 //
-// Input:
+// Parameters:
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - containerOffset: absolute offset of the containing node.
 //   - entryOffset: absolute offset of the child-offset entry.
 //   - width: encoded width from childOffsetSize (UB2 or UB4).
 //
-// Output:
+// Returns:
 //   - absolute document offset of the referenced child node.
 //
 // Errors:
@@ -397,12 +397,12 @@ func readChildOffsetAt(buf *osonBuffer, header *osonHeader, containerOffset, ent
 
 // readRelativeChildOffset decodes one signed child-offset delta from a relative table.
 //
-// Input:
+// Parameters:
 //   - buf: OSON document reader.
 //   - entryOffset: absolute offset of the delta entry.
 //   - width: encoded width from childOffsetSize (UB2 or UB4).
 //
-// Output:
+// Returns:
 //   - signed tree-relative delta stored at entryOffset.
 //
 // Errors:

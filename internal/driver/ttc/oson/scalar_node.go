@@ -71,10 +71,10 @@ type scalarNode struct {
 
 // Kind implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - none.
 //
-// Output:
+// Returns:
 //   - drvCommon.KindScalar.
 //
 // Errors:
@@ -85,13 +85,13 @@ func (scalar *scalarNode) Kind() drvCommon.Kind {
 
 // newScalarNodeAt parses one scalar node at offset and returns *scalarNode.
 //
-// Input:
+// Parameters:
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - offset: absolute document offset of the scalar node.
 //   - opcode: opcode already read by newNodeAt; payload validation is lazy.
 //
-// Output:
+// Returns:
 //   - *scalarNode rooted at offset.
 //
 // Errors:
@@ -110,10 +110,10 @@ func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drv
 
 // GetValue implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - opt: JSON materialization option.
 //
-// Output:
+// Returns:
 //   - decoded scalar value.
 //
 // Errors:
@@ -124,10 +124,10 @@ func (scalar *scalarNode) GetValue(opt drvCommon.JSONConversionOptions) (any, er
 
 // String implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - opts: JSON materialization option.
 //
-// Output:
+// Returns:
 //   - JSON text for the scalar value.
 //
 // Errors:
@@ -176,10 +176,10 @@ func (scalar *scalarNode) MarshalJSON() ([]byte, error) {
 
 // Value implements the JSONScalarNode interface.
 //
-// Input:
+// Parameters:
 //   - opts: JSON materialization option.
 //
-// Output:
+// Returns:
 //   - decoded scalar value.
 //
 // Errors:

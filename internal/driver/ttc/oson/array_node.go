@@ -67,7 +67,7 @@ type arrayNode struct {
 
 // newArrayNodeAt parses OSON array metadata at an absolute document offset.
 //
-// Input:
+// Parameters:
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - arrayNodeOffset: absolute document offset of the array opcode.
@@ -106,10 +106,10 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, op
 
 // Kind implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - none.
 //
-// Output:
+// Returns:
 //   - drvCommon.KindArray.
 //
 // Errors:
@@ -120,10 +120,10 @@ func (array *arrayNode) Kind() drvCommon.Kind {
 
 // GetValue implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - opts: JSON materialization options.
 //
-// Output:
+// Returns:
 //   - fully materialized array.
 //
 // Errors:
@@ -134,10 +134,10 @@ func (array *arrayNode) GetValue(opts drvCommon.JSONConversionOptions) (any, err
 
 // String implements the JSONNode interface.
 //
-// Input:
+// Parameters:
 //   - opts: JSON materialization options.
 //
-// Output:
+// Returns:
 //   - JSON text for the array.
 //
 // Errors:
@@ -175,10 +175,10 @@ func (array *arrayNode) MarshalJSON() ([]byte, error) {
 
 // Get implements the JSONArrayNode interface.
 //
-// Input:
+// Parameters:
 //   - index: zero-based array element index.
 //
-// Output:
+// Returns:
 //   - child node and true when index resolves successfully.
 //
 // Errors:
@@ -203,10 +203,10 @@ func (array *arrayNode) Get(index int) (drvCommon.JSONNode, bool) {
 
 // Len implements the JSONArrayNode interface.
 //
-// Input:
+// Parameters:
 //   - none.
 //
-// Output:
+// Returns:
 //   - Length of the array.
 //
 // Errors:
@@ -217,10 +217,10 @@ func (array *arrayNode) Len() int {
 
 // Value implements the JSONArrayNode interface.
 //
-// Input:
+// Parameters:
 //   - opts: JSON materialization options.
 //
-// Output:
+// Returns:
 //   - fully materialized array.
 //
 // Errors:
