@@ -15,7 +15,7 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
   - Statements with in parameters and out parameters (using `sql.Out`)
   - PL/SQL In/Out parameters (using `sql.Out`)
   - Inband notifications
-  - Native Oracle JSON support via `github.com/oracle/go-oracledb/v26/oracle/json`
+  - Native Oracle JSON support via `github.com/oracle/go-oracledb/v26/oracle/datatype/json`
   - BLOB support using prefetch and returning `[]byte`
   - CLOB support using prefetch and returning `string`
 
@@ -314,14 +314,16 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 Oracle Database `JSON` type support requires Oracle Database 21c or higher.
 
 - Fetch Oracle JSON into `oracle/datatype/json.JSON`.
-- Bind existing JSON text with `oracle/datatype/json/json.JSONString`.
-- Bind supported Go values with `oracle/datatype/json/json.JSON`.
+- Bind existing JSON text with `oracle/datatype/json.JSONString`.
+- Bind supported Go values with `oracle/datatype/json.JSON`.
 
-See the [JSON example](./examples/json/main.go) for complete usage.
+See the [JSON guide](./documentation/json.md) for binding, fetching, lazy access,
+conversion options, and null handling. For an example of JSON usage, see the
+[JSON example](./examples/json/main.go).
 
 | Oracle Type   | Driver returns       |
 |---------------|----------------------|
-| `JSON` (21c+) | `oracle/datatype/json/json.JSON`   |
+| `JSON` (21c+) | `oracle/datatype/json.JSON`   |
 
 ## Help
 Are you having trouble with Oracle Database Driver for Go? We want to help!
