@@ -47,6 +47,7 @@ import (
 	"testing"
 
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestDecodeObjectAPI verifies object node access API, including lookup and full
@@ -188,6 +189,39 @@ func TestParseRejectsMalformedContainerTables(t *testing.T) {
 	if _, err := Parse(badObject); err == nil {
 		t.Fatal("Parse(invalid object field ID) error = nil, want parsing error")
 	}
+
+	for _, objectFlag := range []drvCommon.UB1{osonOpChildNoSortBit, osonOpObjectSharedFieldIDsBit, osonOpObjectUpdateOverflowBit} {
+		badArray := sampleNestedArray.cloneOSON()
+		badArray[arrayHeader.treeSegmentOffset()] = byte(osonOpArrayType | objectFlag)
+		if _, err := Parse(badArray); err == nil {
+			t.Errorf("Parse(array opcode 0x%02x) error = nil, want object-only-flag rejection", osonOpArrayType|objectFlag)
+		}
+	}
+}
+
+// TestParseRejectsDelegateWithoutReferredBit verifies a field-ID reference
+// object rejects delegate objects that do not own a shared field-ID array.
+func TestParseRejectsDelegateWithoutReferredBit(t *testing.T) {
+	// Tree layout:
+	//   offset 0: referring object [0x98][delegate ref=5][child offset=9]
+	//   offset 5: delegate object  [0x80][count=1][fid=1][child offset=9]
+	// The delegate opcode 0x80 omits the shared-field-IDs bit (0x02), so it
+	// cannot own the field-ID array the referring object tries to reuse.
+	buf := newOsonBuffer(drvCommon.B1Array{
+		osonOpObjectType | osonOpChildDelegateForm, 0x00, 0x05, 0x00, 0x09,
+		osonOpObjectType, 1, 1, 0x00, 0x09,
+	})
+	// One-entry dictionary lets fid=1 resolve, so the only failure left is
+	// the delegate ownership check itself.
+	header := &osonHeader{
+		treeSegmentByteLength: 10,
+		fieldDictionary:       dictionary{fieldNames: []string{"a"}},
+	}
+	_, err := newNodeAt(buf, header, 0)
+	if err == nil {
+		t.Fatal("newNodeAt() error = nil, want delegate-ownership error")
+	}
+	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 }
 
 // TestParseRejectsInvalidChildOffset verifies child offsets pointing outside

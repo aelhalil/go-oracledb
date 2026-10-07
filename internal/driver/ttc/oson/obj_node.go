@@ -271,8 +271,14 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 	if readErr != nil {
 		return 0, 0, 0, readErr
 	}
-	if !isObjectOpcode(delegateOpcode) || delegateOpcode&osonOpChildSizeBits == osonOpChildDelegateForm {
-		details := fmt.Sprintf("delegate object %d has no field IDs", delegateOffset)
+	// A valid delegate must own a shared field-ID array, which requires all
+	// three of: object family opcode, a direct count+FID layout (not another
+	// 0x18 reference), and the referred bit (0x02) that advertises the FID
+	// array as shareable. Anything else is a malformed reference.
+	if !isObjectOpcode(delegateOpcode) ||
+		delegateOpcode&osonOpChildSizeBits == osonOpChildDelegateForm ||
+		delegateOpcode&osonOpObjectSharedFieldIDsBit == 0 {
+		details := fmt.Sprintf("delegate object %d is not a field-ID owner", delegateOffset)
 		common.Odl.Debug("readObjectLayout: failed", "error", details, "offset", offset, "delegateOffset", delegateOffset, "delegateOpcode", delegateOpcode)
 		return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}

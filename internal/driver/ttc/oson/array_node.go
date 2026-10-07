@@ -40,6 +40,7 @@ package oson
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -76,6 +77,15 @@ type arrayNode struct {
 // Errors:
 //   - malformed child-count or child-offset layout.
 func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, opcode drvCommon.UB1) (*arrayNode, error) {
+	// The low opcode bits 0x04 (unsorted FIDs), 0x02 (shared FIDs), and
+	// 0x01 (overflow body) only describe object field-ID storage, so an
+	// array opcode carrying any of them marks the document as malformed.
+	if opcode&(osonOpChildNoSortBit|osonOpObjectSharedFieldIDsBit|osonOpObjectUpdateOverflowBit) != 0 {
+		cause := fmt.Errorf("array opcode 0x%02x sets object-only flag bits 0x%02x", opcode, opcode&0x07)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+	}
+
 	elementCount, childOffsetArrayStart, err := readContainerCountAt(buf, arrayNodeOffset+1, opcode)
 	if err != nil {
 		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "opcode", opcode)

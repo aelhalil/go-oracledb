@@ -69,11 +69,13 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParseRejectsMalformedHeaders", Categories: "unitary", Fn: TestParseRejectsMalformedHeaders},
 	{Name: "TestHeaderRejectsInvalidUpdateMetadata", Categories: "unitary", Fn: TestHeaderRejectsInvalidUpdateMetadata},
 	{Name: "TestHeaderRejectsOutOfRangeUpdateMappings", Categories: "unitary", Fn: TestHeaderRejectsOutOfRangeUpdateMappings},
+	{Name: "TestHeaderRejectsMalformedDictionaryHeap", Categories: "unitary", Fn: TestHeaderRejectsMalformedDictionaryHeap},
 
 	// Validate container tables and node references before exposing document values.
 	{Name: "TestParseRejectsMalformedContainerTables", Categories: "unitary", Fn: TestParseRejectsMalformedContainerTables},
 	{Name: "TestParseRejectsInvalidChildOffset", Categories: "unitary", Fn: TestParseRejectsInvalidChildOffset},
 	{Name: "TestParseRejectsForwardingCycle", Categories: "unitary", Fn: TestParseRejectsForwardingCycle},
+	{Name: "TestParseRejectsDelegateWithoutReferredBit", Categories: "unitary", Fn: TestParseRejectsDelegateWithoutReferredBit},
 
 	// Decode valid documents and verify scalar values, object and array access,
 	// independent Oracle samples, and JSON rendering.

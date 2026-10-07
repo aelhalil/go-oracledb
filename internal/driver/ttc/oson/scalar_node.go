@@ -203,6 +203,10 @@ const (
 	_compactNumberLengthMask   = 0x0F
 	_compactNumberLengthBias   = 1
 
+	// _compactSigned64MaxPayloadLen is the largest NUMBER payload the compact
+	// signed-64 opcode family can promise.
+	_compactSigned64MaxPayloadLen = 12
+
 	_jsonFloatBitSize = 64
 )
 
@@ -236,7 +240,13 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 
 	// Compact signed32 stores the payload width in the opcode.
 	case isCompactSigned32Opcode(opcode):
+		// The 0x40-0x47 family promises a 1-7 byte Oracle NUMBER, so a
+		// zero width (opcode 0x40) is a malformed document, not a value.
 		payloadLen := int(opcode & _compactSigned32LengthMask)
+		if payloadLen == 0 {
+			cause := fmt.Errorf("compact signed32 opcode 0x%02x declares zero NUMBER payload length", opcode)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		}
 		raw, err := buf.readSliceAt(offset+osonUB1Size, payloadLen)
 		if err != nil {
 			return nil, err
@@ -249,7 +259,14 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 
 	// Compact signed64 stores the payload width in the opcode.
 	case isCompactSigned64Opcode(opcode):
+		// The 0x50-0x5f family promises a 1-12 byte Oracle NUMBER. The 4-bit
+		// width can claim 0 or 13-15 bytes (0x50, 0x5d-0x5f); those opcodes
+		// are malformed and must not reach the integer decoder.
 		payloadLen := int(opcode & _compactSigned64LengthMask)
+		if payloadLen == 0 || payloadLen > _compactSigned64MaxPayloadLen {
+			cause := fmt.Errorf("compact signed64 opcode 0x%02x declares NUMBER payload length %d outside valid range 1-%d", opcode, payloadLen, _compactSigned64MaxPayloadLen)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		}
 		raw, err := buf.readSliceAt(offset+osonUB1Size, payloadLen)
 		if err != nil {
 			return nil, err

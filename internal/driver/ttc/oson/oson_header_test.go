@@ -40,11 +40,12 @@ package oson
 
 import (
 	"encoding/binary"
-	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"math"
 	"strconv"
 	"testing"
+
+	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestParseRejectsMalformedHeaders verifies Parse rejects malformed forms of
@@ -156,6 +157,79 @@ func TestHeaderRejectsOutOfRangeUpdateMappings(t *testing.T) {
 			_, err = newOsonHeader(newOsonBuffer(doc))
 			if err == nil {
 				t.Fatal("newOsonHeader(invalid mapping) error = nil, want validation error")
+			}
+			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+		})
+	}
+}
+
+// TestHeaderRejectsMalformedDictionaryHeap verifies the header bounds-checks
+// dictionary heap offsets and name lengths before slicing the heap.
+func TestHeaderRejectsMalformedDictionaryHeap(t *testing.T) {
+	// Each case corrupts one real OSON fixture: an offset entry pointing
+	// past its tier's heap, or the first heap record's length prefix claiming
+	// more bytes than the heap holds. Tiers are laid out as hash array,
+	// offset array, then heap, directly before the tree segment, so a heap
+	// starts at the tree offset minus its packed length-prefixed records.
+	tests := []struct {
+		name      string
+		sample    osonSample
+		secondary bool // corrupt the long-key tier instead of the primary
+		offset    bool // corrupt an offset entry instead of a length prefix
+	}{
+		{"primary offset", sampleSimpleObject, false, true},
+		{"primary length", sampleSimpleObject, false, false},
+		{"secondary offset", sampleSecondaryDictionary, true, true},
+		{"secondary length", sampleSecondaryDictionary, true, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Parse the untouched fixture first: this control proves the
+			// sample itself is valid, so any later failure can only come
+			// from the mutation below, and it decodes the field names and
+			// tree start needed to locate the dictionary bytes.
+			doc := test.sample.cloneOSON()
+			header, err := newOsonHeader(newOsonBuffer(doc))
+			if err != nil {
+				t.Fatalf("newOsonHeader(valid fixture) error = %v", err)
+			}
+
+			// Pick the tier under test: primary records are [1-byte length]
+			// [name], secondary records are [UB2 length][name]. Summing the
+			// packed record sizes gives the heap size, and because the tier
+			// ends exactly where the tree begins, treeStart - heapSize is the
+			// heap's first byte.
+			prefixSize := osonUB1Size
+			names := header.fieldDictionary.fieldNames[:header.primaryFieldsCount]
+			if test.secondary {
+				prefixSize = osonUB2Size
+				names = header.fieldDictionary.fieldNames[header.primaryFieldsCount:]
+			}
+			heapSize := 0
+			for _, name := range names {
+				heapSize += prefixSize + len(name)
+			}
+			heapStart := header.treeSegmentStartOffset - heapSize
+
+			if test.offset {
+				// The offset array ends where the heap begins, so the last
+				// UB2 entry sits at heapStart-2. Rewriting it to 0xFFFF makes
+				// the decoder resolve an entry far past the small heap
+				// (17 bytes primary, 258 secondary); the offset bounds check
+				// must reject it instead of slicing heap[65535:].
+				binary.BigEndian.PutUint16(doc[heapStart-osonUB2Size:], math.MaxUint16)
+			} else {
+				// The first heap record's length prefix starts at heapStart.
+				// Setting its first byte to 0xFF declares a name of 255 bytes
+				// in the primary tier (16 remain) or 0xFF00 bytes in the
+				// secondary tier (256 remain); the length bounds check must
+				// reject it instead of slicing past the heap.
+				doc[heapStart] = 0xff
+			}
+
+			_, err = newOsonHeader(newOsonBuffer(doc))
+			if err == nil {
+				t.Fatal("newOsonHeader(malformed heap) error = nil, want malformed-dictionary error")
 			}
 			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
 		})
