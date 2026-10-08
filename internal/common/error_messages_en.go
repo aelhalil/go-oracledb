@@ -606,4 +606,20 @@ func initMessagesEn() {
 
 	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider found of the requested type")
 
+	// Document: No
+	// Cause:    A buffer cursor was set outside the bytes available in the buffer.
+	// Action:   Use a position from zero through the buffer size.
+	// Comment:  Arg[0]: position; Arg[1]: size.
+	message.SetString(language.English, string(oracleErrors.BufferInvalidPosition), "buffer position %d is outside the valid range from 0 to %d.")
+	// Document: No
+	// Cause:    A buffer read requested more bytes than remain available.
+	// Action:   Ensure the buffer contains the required bytes before reading it.
+	// Comment:  Arg[0]: requested length; Arg[1]: position; Arg[2]: remaining length.
+	message.SetString(language.English, string(oracleErrors.BufferUnderflow), "cannot read %d bytes at position %d: only %d bytes remain.")
+	// Document: No
+	// Cause:    An absolute buffer range was outside the bytes available in the buffer.
+	// Action:   Use an offset and length wholly contained by the buffer.
+	// Comment:  Arg[0]: offset; Arg[1]: length; Arg[2]: size.
+	message.SetString(language.English, string(oracleErrors.BufferInvalidRange), "buffer range with offset %d and length %d is outside buffer size %d.")
+
 }

@@ -58,4 +58,19 @@ func initMessagesFr() {
 	message.SetString(language.French, string(oracleErrors.InvalidIdentifier), "identifiant SQL invalide")
 	message.SetString(language.French, string(oracleErrors.MissingReadPrivilege), "privilège READ manquant")
 	message.SetString(language.French, string(oracleErrors.MissingLocalizationService), "service de localisation manquant sur la shelf")
+	// Document: No
+	// Cause:    Un curseur de tampon a été défini en dehors des octets disponibles.
+	// Action:   Utilisez une position comprise entre zéro et la taille du tampon.
+	// Comment:  Arg[0]: position; Arg[1]: taille.
+	message.SetString(language.French, string(oracleErrors.BufferInvalidPosition), "la position du tampon %d est en dehors de la plage valide de 0 à %d.")
+	// Document: No
+	// Cause:    Une lecture de tampon a demandé plus d'octets qu'il n'en reste.
+	// Action:   Vérifiez que le tampon contient les octets requis avant de le lire.
+	// Comment:  Arg[0]: longueur demandée; Arg[1]: position; Arg[2]: longueur restante.
+	message.SetString(language.French, string(oracleErrors.BufferUnderflow), "impossible de lire %d octets à la position %d : il ne reste que %d octets.")
+	// Document: No
+	// Cause:    Une plage absolue de tampon était en dehors des octets disponibles.
+	// Action:   Utilisez un décalage et une longueur entièrement contenus dans le tampon.
+	// Comment:  Arg[0]: décalage; Arg[1]: longueur; Arg[2]: taille.
+	message.SetString(language.French, string(oracleErrors.BufferInvalidRange), "la plage du tampon avec le décalage %d et la longueur %d est en dehors de la taille du tampon %d.")
 }
