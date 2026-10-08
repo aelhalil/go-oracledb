@@ -582,7 +582,7 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.JSONAccessError), "invalid JSON access: %s")
 	// Document: No
 	// Cause:    The OSON magic, version, flags, dictionary metadata, or segment layout is invalid, truncated, or unsupported.
-	// Action:   Verify that the complete value was read from an Oracle JSON column. If the database produced the value, review the wrapped cause and check database and driver version compatibility.
+	// Action:   Enable debug logging for parsing details and check database and driver version compatibility.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.OsonHeaderError), "invalid or unsupported OSON document header")
 	// Document: No
@@ -592,32 +592,32 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.OsonBufferError), "invalid OSON buffer access")
 	// Document: No
 	// Cause:    The OSON value tree contains an invalid or unsupported opcode, container layout, child offset, or forwarding record.
-	// Action:   Verify that the payload is a complete OSON document and inspect the parsing detail and enable debug logging.
-	// Comment:  Arg[0]: parsing detail.
-	message.SetString(language.English, string(oracleErrors.OsonParsingError), "invalid or unsupported OSON document structure: %s")
+	// Action:   Verify that the payload is a complete OSON document and enable debug logging for parsing details.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.OsonParsingError), "invalid or unsupported OSON document structure")
 	// Document: No
 	// Cause:    A public oracle/json method was called on a nil receiver.
 	// Action:   Initialize the receiver before calling the method.
 	// Comment:  Arg[0]: method name.
-	message.SetString(language.English, string(oracleErrors.JSONNilReceiver), "oracle/json method %s called on nil receiver")
+	message.SetString(language.English, string(oracleErrors.JSONNilReceiver), "JSON method %s called on nil receiver")
 	// Document: No
 	// Cause:    oracle/json Scan received a source type that is not supported by the current API.
 	// Action:   Scan OSON bytes or use a supported source representation.
 	// Comment:  Arg[0]: source type.
-	message.SetString(language.English, string(oracleErrors.JSONScanTypeUnsupportedError), "oracle/json cannot scan %s")
+	message.SetString(language.English, string(oracleErrors.JSONScanTypeUnsupportedError), "JSON cannot scan %s")
 	// Document: No
 	// Cause:    The caller requested an array element outside the valid bounds.
 	// Action:   Validate the index against the array length before reading.
 	// Comment:  Arg[0]: array index.
-	message.SetString(language.English, string(oracleErrors.JSONArrayIndexOutOfRangeError), "oracle/json array index %d out of range")
+	message.SetString(language.English, string(oracleErrors.JSONArrayIndexOutOfRangeError), "JSON array index %d out of range")
 	// Document: No
 	// Cause:    A value could not be encoded as OSON.
-	// Action:   Inspect the wrapped cause for details.
+	// Action:   Verify the input is supported and enable debug logging for encoding details.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.OsonEncodingError), "failed to encode value as an OSON document")
 	// Document: No
 	// Cause:    An Oracle JSON value could not be represented as JSON text.
-	// Action:   Inspect the wrapped cause for details.
+	// Action:   Enable debug logging for rendering details.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.JSONRenderingError), "failed to render Oracle JSON value as JSON text")
 	// Document: No

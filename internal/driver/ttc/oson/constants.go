@@ -40,7 +40,7 @@ package oson
 
 import drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 
-// Internal wire-format widths, fixed payload sizes, and header bounds used across the OSON parser.
+// Wire-format field widths used across the OSON parser.
 const (
 	// osonUB1Size is the byte size of one OSON UB1 field.
 	osonUB1Size = 1
@@ -48,7 +48,10 @@ const (
 	osonUB2Size = 2
 	// osonUB4Size is the byte size of one OSON UB4 field.
 	osonUB4Size = 4
+)
 
+// OSON document header values and size bounds.
+const (
 	// osonMagicPrefix is the fixed `FF 4A 5A` OSON magic prefix with a zeroed version byte.
 	osonMagicPrefix = 0xff_4a_5a_00
 	// osonFormatMinVersion is the oldest OSON format version accepted by this parser.
@@ -67,21 +70,26 @@ const (
 	osonMagicPrefixMask = 0xff_ff_ff_00
 	// osonVersionByteMask selects the format-version byte from the first header word.
 	osonVersionByteMask = 0x00_00_00_ff
+)
 
+// OSON update mapping entry sizes.
+const (
 	// osonUpdateMappingEntrySizeUB2 is the byte size of one UB2 overflow mapping pair.
 	osonUpdateMappingEntrySizeUB2 = 2 * 2
 	// osonUpdateMappingEntrySizeUB4 is the byte size of one UB4 overflow mapping pair.
 	osonUpdateMappingEntrySizeUB4 = 4 * 2
+)
 
-	// osonScalarOpcodeSize is the size in bytes of a scalar encoded only by its opcode byte.
-	osonScalarOpcodeSize = 1
-	// osonScalarHeaderSizeUB1 is the size in bytes of [opcode][UB1 length].
-	osonScalarHeaderSizeUB1 = 2
+// OSON scalar length-header sizes.
+const (
 	// osonScalarHeaderSizeUB2 is the size in bytes of [opcode][UB2 length].
 	osonScalarHeaderSizeUB2 = 3
 	// osonScalarHeaderSizeUB4 is the size in bytes of [opcode][UB4 length].
 	osonScalarHeaderSizeUB4 = 5
+)
 
+// Fixed payload sizes for OSON scalar values.
+const (
 	// osonBinaryFloatPayloadSize is the fixed payload size of one binary float scalar.
 	osonBinaryFloatPayloadSize = 4
 	// osonBinaryDoublePayloadSize is the fixed payload size of one binary double scalar.
@@ -94,7 +102,10 @@ const (
 	osonIntervalDSPayloadSize = 11
 	// osonTimestamp7PayloadSize is the fixed payload size of one 7-byte TIMESTAMP scalar.
 	osonTimestamp7PayloadSize = 7
+)
 
+// Opcode masks used to classify OSON values.
+const (
 	// osonObjectOrArrayOpMask selects bits 7-6: 10 is an object and 11 is an array.
 	osonObjectOrArrayOpMask = 0xC0
 	// osonCompactSigned32Mask selects the 01000xxx compact signed-32 opcode; xxx is the payload length.
@@ -113,16 +124,21 @@ const (
 	osonFNVPrime32 = 16777619
 )
 
-// Flag masks in the 2-byte secondary flag.
+// Flag masks in the 2-byte secondary-dictionary flag word (pflag3, pflag4).
 const (
-	// UB2 entries for field-name offsets when the field-name heap fits within UB2 limit.
+	// osonFlagSecondaryFieldOffsetsUB2Mask selects UB2 secondary field-name offsets;
+	// otherwise offsets use UB4.
 	osonFlagSecondaryFieldOffsetsUB2Mask = 0x0100
+)
+
+// Flag masks in the 2-byte update-header flag word.
+const (
 	// osonFlagUpdateOverflowSegmentUB2Mask indicates the overflow-address mapping
 	// segment stores UB2 key/value entries; otherwise entries are UB4.
 	osonFlagUpdateOverflowSegmentUB2Mask = 0x0100
 )
 
-// Flag masks in the 2-byte primary flag.
+// Flag masks in the 2-byte root-header flag word (flag1, flag2).
 const (
 	// osonFlagRelativeOffsetsMask indicates this document is encoded using
 	// relative-offset mode.
@@ -143,8 +159,8 @@ const (
 	// osonFlagScalarDocumentMask marks a top-level scalar OSON document.
 	osonFlagScalarDocumentMask = 0x0010
 
-	// osonFlagPrimaryHashIDsUseUB1Mask indicates primary dictionary hash IDs are
-	// stored as UB1 values.
+	// osonFlagPrimaryHashIDsUseUB1Mask indicates primary dictionary hash IDs use
+	// the most significant byte of each four-byte field-name hash.
 	osonFlagPrimaryHashIDsUseUB1Mask = 0x0100
 
 	// osonFlagDistinctFieldCountUB2Mask indicates the distinct-field count for
@@ -158,9 +174,6 @@ const (
 	// osonFlagTreeSegmentSizeUB4Mask indicates the tree segment size is stored as UB4.
 	osonFlagTreeSegmentSizeUB4Mask = 0x1000
 
-	// osonFlagObjectFieldsUnsortedMask indicates object field ids within each object
-	// is not sorted by field id.
-	osonFlagObjectFIDsUnsortedMask = 0x8000
 	// Reserved root-header bits must remain clear in persistent OSON images.
 	osonFlagReservedMask = 0x0280
 	// Only the secondary-dictionary UB2-offset bit is currently assigned.
@@ -181,13 +194,13 @@ const (
 
 // OSON op constants.
 const (
-	// Object container prefix.
+	// Object container opcode prefix.
 	osonOpObjectType = 0x80
-	// Array container prefix.
+	// Array container opcode prefix.
 	osonOpArrayType = 0xC0
-	// Uses UB4 child offsets instead of UB2.
+	// Selects UB4 child offsets instead of UB2.
 	osonOpChildOffsetUB4Bit = 0x20
-	// Child-size selector bits.
+	// Selects child-count width, or the object FID-array reference form at 0x18.
 	osonOpChildSizeBits = 0x18
 	// Direct child count uses UB1.
 	osonOpChildCountUB1 = 0x00
@@ -195,18 +208,19 @@ const (
 	osonOpChildCountUB2 = 0x08
 	// Direct child count uses UB4.
 	osonOpChildCountUB4 = 0x10
-	// Child header uses delegate/shared-FID form.
+	// On object opcodes, 0x18 selects the FID-array reference form.
 	osonOpChildDelegateForm = 0x18
 	// Child field IDs are not sorted.
 	osonOpChildNoSortBit = 0x04
-	// Object shares its field-ID array.
+	// This object owns a field-ID array that other objects with the same
+	// definition can reference.
 	osonOpObjectSharedFieldIDsBit = 0x02
-	// Object content is in the extended tree segment.
+	// This referenced object was updated through overflow-address indirection.
 	osonOpObjectUpdateOverflowBit = 0x01
 	// Object prefix with shared field IDs and overflow bits set.
 	osonOpUpdatedObjectReferencePattern = osonOpObjectType | osonOpObjectSharedFieldIDsBit | osonOpObjectUpdateOverflowBit
 
-	// Short UTF-8 string prefix.
+	// Maximum opcode for a short UTF-8 string whose byte length is in the opcode.
 	osonOpShortStringMax = 0x1f
 	// Compact Oracle NUMBER prefix.
 	osonOpCompactOracleNumberPrefix = 0x20

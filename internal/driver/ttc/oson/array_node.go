@@ -81,9 +81,9 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, op
 	// 0x01 (overflow body) only describe object field-ID storage, so an
 	// array opcode carrying any of them marks the document as malformed.
 	if opcode&(osonOpChildNoSortBit|osonOpObjectSharedFieldIDsBit|osonOpObjectUpdateOverflowBit) != 0 {
-		cause := fmt.Errorf("array opcode 0x%02x sets object-only flag bits 0x%02x", opcode, opcode&0x07)
-		common.Odl.Debug("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("array opcode 0x%02x sets object-only flag bits 0x%02x", opcode, opcode&0x07)
+		common.Odl.Debug("newArrayNodeAt: failed", "reason", details, "offset", arrayNodeOffset)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
 	}
 
 	elementCount, childOffsetArrayStart, err := readContainerCountAt(buf, arrayNodeOffset+1, opcode)

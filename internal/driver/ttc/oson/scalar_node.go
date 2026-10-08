@@ -244,8 +244,8 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		// zero width (opcode 0x40) is a malformed document, not a value.
 		payloadLen := int(opcode & _compactSigned32LengthMask)
 		if payloadLen == 0 {
-			cause := fmt.Errorf("compact signed32 opcode 0x%02x declares zero NUMBER payload length", opcode)
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+			common.Odl.Debug("decodeScalarValue: failed", "reason", "compact signed32 has zero NUMBER payload length", "offset", offset, "opcode", opcode)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
 		}
 		raw, err := buf.readSliceAt(offset+osonUB1Size, payloadLen)
 		if err != nil {
@@ -264,8 +264,8 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		// are malformed and must not reach the integer decoder.
 		payloadLen := int(opcode & _compactSigned64LengthMask)
 		if payloadLen == 0 || payloadLen > _compactSigned64MaxPayloadLen {
-			cause := fmt.Errorf("compact signed64 opcode 0x%02x declares NUMBER payload length %d outside valid range 1-%d", opcode, payloadLen, _compactSigned64MaxPayloadLen)
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+			common.Odl.Debug("decodeScalarValue: failed", "reason", "compact signed64 has invalid NUMBER payload length", "offset", offset, "opcode", opcode, "payloadLength", payloadLen, "maxPayloadLength", _compactSigned64MaxPayloadLen)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
 		}
 		raw, err := buf.readSliceAt(offset+osonUB1Size, payloadLen)
 		if err != nil {
@@ -536,13 +536,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		return append([]byte(nil), raw...), nil
 
 	case opcode == osonOpNativeInteger || opcode == osonOpExtendedBinary:
-		cause := fmt.Errorf("opcode 0x%02x is a recognized OSON scalar encoding that the driver does not implement", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonUnsupportedScalarError, cause, opcode)
+		common.Odl.Debug("decodeScalarValue: unsupported scalar", "offset", offset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonUnsupportedScalarError, nil, opcode)
 
 	default:
-		details := fmt.Sprintf("unknown OSON scalar opcode 0x%02x", opcode)
-		cause := fmt.Errorf("opcode 0x%02x is not a recognized OSON scalar encoding", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause, details)
+		common.Odl.Debug("decodeScalarValue: failed", "reason", "unknown scalar opcode", "offset", offset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
 	}
 }
 
@@ -578,8 +577,8 @@ func decodeOracleNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONConve
 	}
 	value, err := strconv.ParseFloat(text, _jsonFloatBitSize)
 	if err != nil {
-		details := fmt.Sprintf("invalid Oracle NUMBER %q", text)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
+		common.Odl.Debug("decodeOracleNumberValue: failed", "reason", "invalid Oracle NUMBER text", "length", len(text))
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
 	}
 	return value, nil
 }
@@ -592,8 +591,8 @@ func decodeStringNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONConve
 	}
 	value, err := strconv.ParseFloat(text, _jsonFloatBitSize)
 	if err != nil {
-		details := fmt.Sprintf("invalid string NUMBER %q", text)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
+		common.Odl.Debug("decodeStringNumberValue: failed", "reason", "invalid string NUMBER text", "length", len(text))
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
 	}
 	return value, nil
 }
