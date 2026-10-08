@@ -48,14 +48,22 @@
 // The returned [JSON] implements [database/sql/driver.Valuer] and can be passed
 // directly to database/sql. Passing nil creates JSON null.
 //
-// [JSONString] binds pre-serialized JSON text. It validates the text but cannot
-// represent OSON-native binary or temporal scalars.
+// [JSONString] binds pre-serialized JSON text. It validates the text at the
+// bind boundary but cannot represent OSON-native binary or temporal scalars.
 //
 // # Fetching
 //
 // Scan a JSON column into [JSON], then read it with [JSON.GetValue] or the
 // lazy accessors [JSON.AsJSONObject], [JSON.AsJSONArray], and
 // [JSON.AsJSONScalar]. Use sql.Null[JSON] for nullable columns.
+//
+// # Standard Library Interop
+//
+// [JSON], [JSONObject], [JSONArray], and [JSONScalar] implement
+// [encoding/json.Marshaler], so [encoding/json.Marshal] renders JSON text and
+// reports rendering errors. [JSON] also implements [encoding/json.Unmarshaler]:
+// [encoding/json.Unmarshal] decodes standard JSON text into an OSON document,
+// preserving the text representation of JSON numbers.
 //
 // # Options
 //
@@ -65,6 +73,7 @@
 package json
 
 import (
+	"bytes"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
@@ -88,8 +97,9 @@ const (
 	JSONScalarKind JSONKind = drvCommon.KindScalar
 )
 
-// JSONString is validated JSON text used as a database bind value. It cannot
-// represent OSON-native binary or temporal scalars; use [NewJSON] for those.
+// JSONString is JSON text used as a database bind value. Its validity is
+// checked at the bind boundary. It cannot represent OSON-native binary or
+// temporal scalars; use [NewJSON] for those.
 type JSONString string
 
 // Value implements driver.Valuer.
@@ -103,18 +113,12 @@ func (jz JSONString) Value() (driver.Value, error) {
 	return string(jz), nil
 }
 
-// NewJSONFromString validates value as JSON text and returns it as a
-// [JSONString] for binding. It rejects empty, whitespace-only, and malformed
-// input. Use this for eager validation; [JSONString] defers validation to the
-// bind boundary.
-func NewJSONFromString(value string) (JSONString, error) {
+// NewJSONFromString returns value as a [JSONString] for binding. The text is
+// validated at the bind boundary by [JSONString.Value].
+func NewJSONFromString(value string) JSONString {
 	common.Odl.Debug("NewJSONFromString: start", "length", len(value))
-	if !json.Valid([]byte(value)) {
-		common.Odl.Debug("NewJSONFromString: failed", "reason", "invalid JSON text", "length", len(value))
-		return "", common.NewOracleError(oracleErrors.OsonEncodingError, nil)
-	}
 	common.Odl.Debug("NewJSONFromString: completed", "length", len(value))
-	return JSONString(value), nil
+	return JSONString(value)
 }
 
 // JSON is an OSON-encoded JSON document that can be bound and scanned through
@@ -161,6 +165,38 @@ func (jz *JSON) SetOptions(opts Options) error {
 		return common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "SetOptions")
 	}
 	jz.options = opts
+	return nil
+}
+
+// UnmarshalJSON implements encoding/json.Unmarshaler. It replaces jz with an
+// OSON document decoded from standard JSON text, preserving JSON numbers as
+// json.Number values.
+func (jz *JSON) UnmarshalJSON(data []byte) error {
+	if jz == nil {
+		common.Odl.Debug("JSON.UnmarshalJSON: failed", "reason", "nil receiver")
+		return common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "UnmarshalJSON")
+	}
+
+	var raw json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		common.Odl.Debug("JSON.UnmarshalJSON: failed", "reason", "invalid JSON text", "error", err)
+		return err
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		common.Odl.Debug("JSON.UnmarshalJSON: failed", "reason", "decode JSON text", "error", err)
+		return err
+	}
+
+	doc, err := NewJSONWithOptions(value, jz.options)
+	if err != nil {
+		common.Odl.Debug("JSON.UnmarshalJSON: failed", "reason", "encode JSON document", "error", err)
+		return err
+	}
+	*jz = doc
 	return nil
 }
 
@@ -302,6 +338,16 @@ func (jz JSON) GetValue() (any, error) {
 	return jz.node.GetValue(drvCommon.JSONConversionOptions(jz.options))
 }
 
+// MarshalJSON implements encoding/json.Marshaler. It returns the JSON text for
+// the document or an error if jz is uninitialized or cannot be rendered.
+func (jz JSON) MarshalJSON() ([]byte, error) {
+	if jz.node == nil {
+		common.Odl.Debug("JSON.MarshalJSON: failed", "reason", "uninitialized JSON value")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "MarshalJSON")
+	}
+	return jz.node.MarshalJSON()
+}
+
 // String returns JSON text for diagnostics. It returns "<JSON: uninitialized>"
 // for the zero value and "<JSON: rendering failed>" if rendering fails.
 func (jz JSON) String() string {
@@ -331,6 +377,16 @@ func (obj JSONObject) GetValue() (map[string]any, error) {
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
 	}
 	return obj.node.Value(drvCommon.JSONConversionOptions(obj.options))
+}
+
+// MarshalJSON implements encoding/json.Marshaler. It returns the JSON text for
+// the object or an error if obj is uninitialized or cannot be rendered.
+func (obj JSONObject) MarshalJSON() ([]byte, error) {
+	if obj.node == nil {
+		common.Odl.Debug("JSONObject.MarshalJSON: failed", "reason", "uninitialized object view")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "MarshalJSON")
+	}
+	return obj.node.MarshalJSON()
 }
 
 // Keys returns the names of the object's members. Their order is unspecified.
@@ -395,6 +451,16 @@ func (arr JSONArray) GetValue() ([]any, error) {
 	return arr.node.Value(drvCommon.JSONConversionOptions(arr.options))
 }
 
+// MarshalJSON implements encoding/json.Marshaler. It returns the JSON text for
+// the array or an error if arr is uninitialized or cannot be rendered.
+func (arr JSONArray) MarshalJSON() ([]byte, error) {
+	if arr.node == nil {
+		common.Odl.Debug("JSONArray.MarshalJSON: failed", "reason", "uninitialized array view")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "MarshalJSON")
+	}
+	return arr.node.MarshalJSON()
+}
+
 // Get returns the lazy child JSON at index i. It returns an error if i is
 // outside [0, Len()).
 func (arr JSONArray) Get(i int) (JSON, error) {
@@ -441,6 +507,16 @@ func (scalar JSONScalar) GetValue() (any, error) {
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
 	}
 	return scalar.node.Value(drvCommon.JSONConversionOptions(scalar.options))
+}
+
+// MarshalJSON implements encoding/json.Marshaler. It returns the JSON text for
+// the scalar or an error if scalar is uninitialized or cannot be rendered.
+func (scalar JSONScalar) MarshalJSON() ([]byte, error) {
+	if scalar.node == nil {
+		common.Odl.Debug("JSONScalar.MarshalJSON: failed", "reason", "uninitialized scalar view")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "MarshalJSON")
+	}
+	return scalar.node.MarshalJSON()
 }
 
 // String implements fmt.Stringer, returning JSON text for display.

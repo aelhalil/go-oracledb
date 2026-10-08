@@ -36,7 +36,7 @@ The following table summarizes the available APIs for binding and fetching JSON.
 | --- | --- | --- |
 | A Go object, array, or scalar to bind | `ojson.NewJSON(value)` | Encodes the value as OSON, Oracle's binary JSON format. |
 | Go values with explicit conversion options | `ojson.NewJSONWithOptions(value, opts)` | Uses the specified [options](#json-encoding-and-decoding-options) for encoding and decoding. |
-| Existing JSON text to bind | `ojson.NewJSONFromString(text)` or `ojson.JSONString(text)` | Sends the JSON text as a string bind value (not encoded as OSON). |
+| Existing JSON text to bind | `ojson.NewJSONFromString(text)` | Sends the JSON text as a string bind value (not encoded as OSON). |
 | A native JSON column to fetch | `ojson.JSON` | Holds the fetched JSON document. |
 | A nullable native JSON column | `sql.Null[ojson.JSON]` | Distinguishes SQL NULL from a JSON document containing `null`. |
 
@@ -55,13 +55,11 @@ _, err := db.ExecContext(ctx,
 )
 ```
 
-You can validate existing JSON text and bind it with:
+You can bind existing JSON text with `NewJSONFromString`. It is validated at
+the bind boundary:
 
 ```go
-doc, err := ojson.NewJSONFromString(`{"name":"Alice","active":true}`)
-if err != nil {
-	return fmt.Errorf("validate JSON text: %w", err)
-}
+doc := ojson.NewJSONFromString(`{"name":"Alice","active":true}`)
 _, err := db.ExecContext(ctx,
 	"INSERT INTO json_documents (id, doc) VALUES (:1, :2)", 2, doc,
 )
@@ -95,6 +93,32 @@ and `JSONScalar` work on the underlying OSON bytes and decode values on demand.
 Object and array `Get` methods return child `JSON` values. Calling `GetValue()`
 decodes the selected value, including all its children if it is an object or
 array.
+
+`JSON`, `JSONObject`, `JSONArray`, and `JSONScalar` implement
+[json.Marshaler](https://pkg.go.dev/encoding/json#Marshaler). Use
+`json.Marshal` to obtain JSON text when rendering errors need to be reported;
+the `String` methods are intended for diagnostics and return a placeholder when
+rendering fails.
+
+`JSON` also implements [json.Unmarshaler](https://pkg.go.dev/encoding/json#Unmarshaler),
+so standard JSON text can be decoded directly into an OSON document. JSON
+numbers retain their text representation rather than being converted to
+`float64`.
+
+```go
+text, err := json.Marshal(doc)
+if err != nil {
+	return fmt.Errorf("marshal JSON document: %w", err)
+}
+fmt.Printf("JSON text: %s\n", text)
+```
+
+```go
+var doc ojson.JSON
+if err := json.Unmarshal([]byte(`{"score":9007199254740993}`), &doc); err != nil {
+	return fmt.Errorf("decode JSON document: %w", err)
+}
+```
 
 ### JSONObject
 
@@ -146,7 +170,7 @@ text := scalar.String()
 
 The following table summarizes the driver's binding and fetching type mappings.
 `stdjson` refers to Go's `encoding/json` package. Fetched JSON values are
-converted by `GetValue()` using default options; SQL `NULL` is handled when
+converted by `GetValue()` using the default options; SQL `NULL` is handled when
 fetching the column.
 
 | JSON Value | Go Value for Binding | Go Value when Fetching |
@@ -154,7 +178,7 @@ fetching the column.
 | object | `map[string]any` | `map[string]any` |
 | array | `[]any` | `[]any` |
 | string | `string` | `string` |
-| number | `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64`, `stdjson.Number` | `int32` or `int64` for the supported integers; `stdjson.Number` for Oracle NUMBER, Decimal128, and string numbers; `float64` for binary floats |
+| number | `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64`, `stdjson.Number` | `int32`, `int64`, `stdjson.Number`, or `float64`; see [Number mapping](#number-mapping). |
 | `true` | `true` | `true` |
 | `false` | `false` | `false` |
 | `RAW` | `[]byte` | `[]byte` |
@@ -167,6 +191,28 @@ fetching the column.
 | JSON `null` | `nil` | `nil` |
 | SQL `NULL` | `nil` passed directly as a SQL parameter | `sql.Null[ojson.JSON]` with `Valid` set to `false` |
 
+### Number mapping
+
+When binding, the Go number type determines the OSON number type. With the
+default `NumberMode`, the following table shows what `GetValue()` returns after
+fetching it:
+
+| Go value bound | Stored OSON number | Default Go value fetched |
+| --- | --- | --- |
+| `int8`, `int16`, `int32`, `uint8`, `uint16` | Signed 32-bit integer | `int32` |
+| `int`, `int64`, `uint32` | Signed 64-bit integer | `int64` |
+| `uint`, `uint64` | Oracle `NUMBER` | `stdjson.Number` |
+| `stdjson.Number` | Number stored as text | `stdjson.Number` |
+| `float32` | `BINARY_FLOAT` | `float64` |
+| `float64` | `BINARY_DOUBLE` | `float64` |
+
+If you want to change the document-wide number-decoding behavior and use one
+unified Go type for every fetched number, set `Options.NumberMode` to
+`NumberAsJSONNumber` for `stdjson.Number` values or `NumberAsFloat64` for
+`float64` values. Leave it as `NumberDefault` to use the mapping above.
+
+See [Control number precision](#control-number-precision) for how to set the option.
+
 ## JSON encoding and decoding options
 
 `Options` lets you control how Go values are encoded into JSON and how JSON
@@ -177,6 +223,10 @@ your application. Each option applies to the whole document, not to individual v
 
 The `NumberMode` option selects the Go type returned when reading JSON numbers with
 `GetValue()`. It applies to every number in the document.
+
+The default mode already preserves each number in an appropriate Go type. Set
+`NumberMode` only when your application needs every JSON number to have the
+same Go representation.
 
 | Option | Go representation |
 | --- | --- |
@@ -194,7 +244,9 @@ For example, a row contains this JSON:
 {"score": 9007199254740993}
 ```
 
-Fetch it with `NumberAsJSONNumber` to preserve the number's precision:
+Set `NumberAsJSONNumber` when every number should be returned as
+`stdjson.Number` (or set `NumberAsFloat64` when every number should be a
+`float64`):
 
 ```go
 var doc ojson.JSON
@@ -251,10 +303,20 @@ The OSON scalar stored in `doc` for each option:
 
 ## Caveats
 
-### `String()` returns sentinels, not errors
+### Get JSON text with `json.Marshal`
 
-The `String()` methods of `JSON`, `JSONObject`, `JSONArray`, and `JSONScalar`
-never report errors. They return a sentinel instead of JSON text:
+Use `json.Marshal` for JSON text that your application sends, stores, or
+processes. It returns an error if the document cannot be rendered:
+
+```go
+text, err := json.Marshal(doc)
+if err != nil {
+	return fmt.Errorf("marshal JSON document: %w", err)
+}
+```
+
+`String()` is intended for diagnostics. It cannot return an error, so it
+returns a sentinel instead of JSON text:
 
 - `"<JSON: uninitialized>"` (same pattern for the other types) for the zero
   value, such as a `JSON` that was never fetched or bound.
@@ -262,10 +324,8 @@ never report errors. They return a sentinel instead of JSON text:
   document contains an unsupported OSON scalar (see below) or a non-finite
   `BINARY_FLOAT`/`BINARY_DOUBLE` value: NaN and ±Inf have no JSON text form.
 
-Use `GetValue()` to get decoding errors rather than a rendering sentinel.
-For non-finite binary floats, `GetValue()` returns a Go `float64` containing
-NaN or ±Inf, while `String()` cannot render JSON text. Rendering a container
-fails as a whole if any child in the rendered subtree cannot be rendered.
+Rendering a container fails as a whole if any child in that subtree cannot be
+rendered. Use `json.Marshal` when the error matters.
 
 ### OSON scalars not supported yet
 
@@ -278,9 +338,9 @@ The following OSON scalars are recognized but not implemented yet. Accessing a
 document that contains one with `GetValue()` returns an error; rendering the
 affected subtree with `String()` returns `"<JSON: rendering failed>"`:
 
-- Native integer (opcode `0x79`)
-- Extended binary (opcode `0x7b`): vectors, scalar arrays, and embedded OSON
-- Reserved or unknown opcodes are rejected as malformed
+- Native integer
+- Extended binary values: vectors, scalar arrays, and embedded OSON
+- Reserved or unknown scalar formats are rejected as malformed
 
 ### Types not supported for binding
 

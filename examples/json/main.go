@@ -42,6 +42,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	stdjson "encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -69,7 +70,6 @@ func main() {
 	}
 	defer db.Close()
 
-	// Recreate the example table so the program can be run repeatedly.
 	const table = "go_driver_json_example"
 	if _, err := db.ExecContext(ctx, "create table "+table+" (id number primary key, doc JSON)"); err != nil {
 		log.Fatal(err)
@@ -78,23 +78,53 @@ func main() {
 		_, _ = db.ExecContext(context.Background(), "drop table "+table+" purge")
 	}()
 
-	// JSONString binds JSON that is already represented as text.
-	if _, err := db.ExecContext(ctx,
-		"insert into "+table+" (id, doc) values (:1, :2)",
-		1, ojson.JSONString(`{"name":"Alice","score":9007199254740993}`),
-	); err != nil {
+	// inserting a JSON text.
+	jsonText := `{
+		"order": {
+			"customer": {
+				"name": "Alice",
+				"addresses": [
+					{"city": "London", "country": "UK"},
+					{"city": "Paris", "country": "France"}
+				]
+			},
+			"id": 9007199254740993,
+			"items": [
+				{"sku": "A-100", "quantity": 2},
+				{"sku": "B-200", "quantity": 1}
+			]
+		}
+	}`
+	textDoc := ojson.NewJSONFromString(jsonText)
+	if _, err := db.ExecContext(ctx, "insert into "+table+" (id, doc) values (:1, :2)", 1, textDoc); err != nil {
 		log.Fatal(err)
 	}
 
-	// JSON encodes a supported Go value and binds it as Oracle JSON.
-	doc, _ := ojson.NewJSON(map[string]any{"name": "Bob", "active": true})
-	if _, err := db.ExecContext(ctx,
-		"insert into "+table+" (id, doc) values (:1, :2)",
-		2, doc,
-	); err != nil {
+	// inserting a JSON from Go values.
+	mapDoc, err := ojson.NewJSON(map[string]any{
+		"order": map[string]any{
+			"customer": map[string]any{
+				"name": "Bob",
+				"addresses": []any{
+					map[string]any{"city": "New York", "country": "USA"},
+					map[string]any{"city": "Toronto", "country": "Canada"},
+				},
+			},
+			"id": int64(9007199254740994),
+			"items": []any{
+				map[string]any{"sku": "C-300", "quantity": 3},
+				map[string]any{"sku": "D-400", "quantity": 4},
+			},
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, "insert into "+table+" (id, doc) values (:1, :2)", 2, mapDoc); err != nil {
 		log.Fatal(err)
 	}
 
+	// Fetch all JSON documents.
 	rows, err := db.QueryContext(ctx, "select doc from "+table+" order by id")
 	if err != nil {
 		log.Fatal(err)
@@ -102,30 +132,104 @@ func main() {
 	defer rows.Close()
 
 	for rows.Next() {
-		// Scan an Oracle JSON column into JSON.
 		var doc ojson.JSON
 		if err := rows.Scan(&doc); err != nil {
 			log.Fatal(err)
 		}
 
-		// setup number decoding as json.Number
-		opts := ojson.Options{NumberMode: ojson.NumberAsJSONNumber}
-		doc.SetOptions(opts)
-
-		text := doc.String()
-		fmt.Printf("JSON text: %s\n", text)
-
-		value, err := doc.GetValue()
+		// Marshal the document to JSON text.
+		text, err := stdjson.Marshal(doc)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("Go value:  %#v\n", value)
+		fmt.Printf("JSON text: %s\n", text)
+		// Expected output:
+		// First row: JSON text: {"order":{"customer":{"addresses":[{"city":"London","country":"UK"},{"city":"Paris","country":"France"}],"name":"Alice"},"id":9007199254740993,"items":[{"quantity":2,"sku":"A-100"},{"quantity":1,"sku":"B-200"}]}}
+		// Second row: JSON text: {"order":{"customer":{"addresses":[{"city":"New York","country":"USA"},{"city":"Toronto","country":"Canada"}],"name":"Bob"},"id":9007199254740994,"items":[{"quantity":3,"sku":"C-300"},{"quantity":4,"sku":"D-400"}]}}
+
+		// The default mode already chooses an appropriate Go number type. Set this
+		// option only when every JSON number should be json.Number. Use
+		// NumberAsFloat64 instead when every JSON number should be float64.
+		if err := doc.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber}); err != nil {
+			log.Fatal(err)
+		}
+
+		// Use the access API to view the document root as an object.
+		object, err := doc.AsJSONObject()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Access the "order" member without decoding the whole document.
+		orderJSON, ok := object.Get("order")
+		if !ok {
+			log.Fatal("order is missing")
+		}
+
+		// Access nested object members from the order.
+		order, err := orderJSON.AsJSONObject()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Access the order ID as a scalar. NumberAsJSONNumber returns json.Number.
+		idJSON, ok := order.Get("id")
+		if !ok {
+			log.Fatal("order ID is missing")
+		}
+		id, err := idJSON.AsJSONScalar()
+		if err != nil {
+			log.Fatal(err)
+		}
+		idValue, err := id.GetValue()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Order ID (%T): %v\n", idValue, idValue)
+		// Expected output:
+		// First row: Order ID (json.Number): 9007199254740993
+		// Second row: Order ID (json.Number): 9007199254740994
+
+		// Access the items array from the order object.
+		itemsJSON, ok := order.Get("items")
+		if !ok {
+			log.Fatal("items are missing")
+		}
+		items, err := itemsJSON.AsJSONArray()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Item count: %d\n", items.Len())
+		// Expected output:
+		// First row: Item count: 2
+		// Second row: Item count: 2
+
+		// Access the first item and then its SKU scalar.
+		firstItemJSON, err := items.Get(0)
+		if err != nil {
+			log.Fatal(err)
+		}
+		firstItem, err := firstItemJSON.AsJSONObject()
+		if err != nil {
+			log.Fatal(err)
+		}
+		skuJSON, ok := firstItem.Get("sku")
+		if !ok {
+			log.Fatal("item SKU is missing")
+		}
+		sku, err := skuJSON.AsJSONScalar()
+		if err != nil {
+			log.Fatal(err)
+		}
+		skuValue, err := sku.GetValue()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("First item SKU: %v\n", skuValue)
+		// Expected output:
+		// First row: First item SKU: A-100
+		// Second row: First item SKU: C-300
 	}
-	// expected output:
-	// 	JSON text: {"name":"Alice","score":9007199254740993}
-	// 	Go value:  map[string]interface {}{"name":"Alice", "score":"9007199254740993"}
-	// 	JSON text: {"active":true,"name":"Bob"}
-	// 	Go value:  map[string]interface {}{"active":true, "name":"Bob"}
 	if err := rows.Err(); err != nil {
 		log.Fatal(err)
 	}

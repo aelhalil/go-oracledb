@@ -90,41 +90,104 @@ func TestJSONStringValue(t *testing.T) {
 	}
 }
 
-// TestNewJSONFromString verifies NewJSONFromString accepts valid JSON text and
-// rejects empty, whitespace-only, and malformed input.
-func TestNewJSONFromString(t *testing.T) {
+// TestJSONMarshalJSON verifies all public JSON views implement the standard
+// library JSON marshaling interface and report errors for zero values.
+func TestJSONMarshalJSON(t *testing.T) {
+	doc, err := NewJSON(map[string]any{"items": []any{"value"}})
+	if err != nil {
+		t.Fatalf("NewJSON() failed: %v", err)
+	}
+	object, err := doc.AsJSONObject()
+	if err != nil {
+		t.Fatalf("AsJSONObject() failed: %v", err)
+	}
+	items, ok := object.Get("items")
+	if !ok {
+		t.Fatal("JSONObject.Get(items) = false")
+	}
+	array, err := items.AsJSONArray()
+	if err != nil {
+		t.Fatalf("AsJSONArray() failed: %v", err)
+	}
+	item, err := array.Get(0)
+	if err != nil {
+		t.Fatalf("JSONArray.Get(0) failed: %v", err)
+	}
+	scalar, err := item.AsJSONScalar()
+	if err != nil {
+		t.Fatalf("AsJSONScalar() failed: %v", err)
+	}
+
 	tests := []struct {
-		name    string
-		input   string
-		wantErr bool
+		name  string
+		value any
+		want  string
 	}{
-		{name: "object", input: `{"ok":true}`, wantErr: false},
-		{name: "array", input: `[1,2,3]`, wantErr: false},
-		{name: "string", input: `"hello"`, wantErr: false},
-		{name: "number", input: `42`, wantErr: false},
-		{name: "null", input: `null`, wantErr: false},
-		{name: "whitespace padded", input: `  {"ok":true}  `, wantErr: false},
-		{name: "empty", input: ``, wantErr: true},
-		{name: "whitespace only", input: `   `, wantErr: true},
-		{name: "malformed", input: `{"missing":`, wantErr: true},
-		{name: "trailing comma", input: `{"a":1,}`, wantErr: true},
+		{name: "document", value: doc, want: `{"items":["value"]}`},
+		{name: "object", value: object, want: `{"items":["value"]}`},
+		{name: "array", value: array, want: `["value"]`},
+		{name: "scalar", value: scalar, want: `"value"`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := NewJSONFromString(tc.input)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("NewJSONFromString(%q) error = nil, want error", tc.input)
-				}
-				return
-			}
+			got, err := stdjson.Marshal(tc.value)
 			if err != nil {
-				t.Fatalf("NewJSONFromString(%q) failed: %v", tc.input, err)
+				t.Fatalf("json.Marshal() failed: %v", err)
 			}
-			if string(got) != tc.input {
-				t.Fatalf("NewJSONFromString(%q) = %q, want input preserved", tc.input, string(got))
+			if string(got) != tc.want {
+				t.Fatalf("json.Marshal() = %s, want %s", got, tc.want)
 			}
 		})
+	}
+
+	zeroValues := []struct {
+		name  string
+		value any
+	}{
+		{name: "document", value: JSON{}},
+		{name: "object", value: JSONObject{}},
+		{name: "array", value: JSONArray{}},
+		{name: "scalar", value: JSONScalar{}},
+	}
+	for _, tc := range zeroValues {
+		t.Run("zero "+tc.name, func(t *testing.T) {
+			if _, err := stdjson.Marshal(tc.value); err == nil {
+				t.Fatalf("json.Marshal(zero %s) error = nil, want error", tc.name)
+			}
+		})
+	}
+}
+
+// TestJSONUnmarshalJSON verifies JSON accepts standard JSON text and preserves
+// number precision while rejecting invalid JSON without replacing the receiver.
+func TestJSONUnmarshalJSON(t *testing.T) {
+	var doc JSON
+	input := []byte(`{"items":["value"],"score":9007199254740993}`)
+	if err := stdjson.Unmarshal(input, &doc); err != nil {
+		t.Fatalf("json.Unmarshal() failed: %v", err)
+	}
+	output, err := stdjson.Marshal(doc)
+	if err != nil {
+		t.Fatalf("json.Marshal() failed: %v", err)
+	}
+	if string(output) != string(input) {
+		t.Fatalf("json.Marshal() = %s, want %s", output, input)
+	}
+
+	if err := stdjson.Unmarshal([]byte(`{"invalid":`), &doc); err == nil {
+		t.Fatal("json.Unmarshal(invalid JSON) error = nil, want error")
+	}
+	output, err = stdjson.Marshal(doc)
+	if err != nil {
+		t.Fatalf("json.Marshal() after invalid input failed: %v", err)
+	}
+	if string(output) != string(input) {
+		t.Fatalf("json.Unmarshal(invalid JSON) replaced document with %s, want %s", output, input)
+	}
+
+	var nilDoc *JSON
+	if err := stdjson.Unmarshal(input, nilDoc); err == nil {
+		t.Fatal("json.Unmarshal(nil *JSON) error = nil, want error")
 	}
 }
 
