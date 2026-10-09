@@ -47,6 +47,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 // Test_defaultNumericValue verifies numeric defaults for NULL values across
@@ -61,7 +62,7 @@ func Test_defaultNumericValue(t *testing.T) {
 	}{
 		{name: "integer scale -> int64 zero", scale: 0, want: int64(0)},
 		{name: "float sentinel -> float64 zero", scale: NumberScaleFloatSentinel, want: float64(0)},
-		{name: "other scale -> decimal string", scale: 5, want: "0"},
+		{name: "other scale -> decimal Number", scale: 5, want: datatype.Number("0")},
 	}
 
 	for _, tc := range cases {
@@ -94,7 +95,7 @@ func Test_defaultValueForNull(t *testing.T) {
 	}{
 		{name: "NUMBER scale 0 -> int64 zero", dtype: DtyNum, scale: 0, want: int64(0)},
 		{name: "NUMBER float sentinel -> float64 zero", dtype: DtyNum, scale: NumberScaleFloatSentinel, want: float64(0)},
-		{name: "NUMBER default -> string zero", dtype: DtyNum, scale: 3, want: "0"},
+		{name: "NUMBER default -> Number zero", dtype: DtyNum, scale: 3, want: datatype.Number("0")},
 		{name: "VARCHAR2 -> empty string", dtype: DtyVCS, want: ""},
 		{name: "RAW -> empty byte slice", dtype: DtyBin, want: common.B1Array{}},
 		{name: "BOOLEAN -> false", dtype: DtyBol, want: false},
@@ -266,7 +267,7 @@ func TestTTCRowsColumnTypeScanType(t *testing.T) {
 	}{
 		{name: "NUMBER as INT", dtype: DtyNum, scale: 0, want: reflect.TypeFor[int64]()},
 		{name: "NUMBER as FLOAT", dtype: DtyNum, scale: NumberScaleFloatSentinel, want: reflect.TypeFor[float64]()},
-		{name: "NUMBER as STRING", dtype: DtyNum, scale: 1, want: reflect.TypeFor[string]()},
+		{name: "NUMBER as Decimal", dtype: DtyNum, scale: 1, want: reflect.TypeFor[datatype.Number]()},
 
 		{name: "VARCHAR", dtype: DtyChr, want: reflect.TypeFor[string]()},
 		{name: "CHAR", dtype: DtyAfc, want: reflect.TypeFor[string]()},

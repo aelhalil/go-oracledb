@@ -47,6 +47,7 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -74,10 +75,10 @@ var numberWireFormatCases = []struct {
 
 /*
 decimalWireFormatCases test Oracle NUMBER(p,s) with non-zero scale and a range of magnitudes.
-Each case declares precision/scale used to format the decoded string for deterministic comparisons.
+Each case declares precision/scale used to format the decoded Number for deterministic comparisons.
 */
 var decimalWireFormatCases = []struct {
-	decimalStr string
+	decimalStr datatype.Number
 	wire       []byte
 	precision  int
 	scale      int
@@ -196,11 +197,13 @@ func TestNumber_OverlongWire(t *testing.T) {
 	}{
 		// DecodeDecimal must reject an overlong positive value before arbitrary-precision conversion.
 		{name: "DecodeDecimal/positive", decode: func(wire []byte) (string, error) {
-			return DecodeDecimal(wire, 38, 0)
+			decoded, err := DecodeDecimal(wire, 38, 0)
+			return string(decoded), err
 		}},
 		// DecodeDecimal must validate length before treating a leading zero marker as Oracle zero.
 		{name: "DecodeDecimal/zero_prefix", zeroPrefix: true, decode: func(wire []byte) (string, error) {
-			return DecodeDecimal(wire, 38, 0)
+			decoded, err := DecodeDecimal(wire, 38, 0)
+			return string(decoded), err
 		}},
 		// FromNumber must report invalid length before its uint64 mantissa can overflow.
 		{name: "FromNumber/positive", decode: func(wire []byte) (string, error) {
@@ -635,7 +638,7 @@ func TestNumber_DecodeDecimal_NegativeScale_Rounding(t *testing.T) {
 		name  string
 		val   float64
 		scale int
-		want  string
+		want  datatype.Number
 	}
 	cases := []tc{
 		// Round to hundreds (s = -2)

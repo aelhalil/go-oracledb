@@ -46,12 +46,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 // TestDriver_Select_NumericFloatTypes
 // Purpose: End-to-end test for numeric/float family:
 //   - NUMBER(12,0) -> integer path (DecodeInt), scanned as int64
-//   - NUMBER(10,7) -> decimal path (DecodeDecimal), scanned as string
+//   - NUMBER(10,7) -> decimal path (DecodeDecimal), scanned as datatype.Number
 //   - FLOAT         -> Oracle stores as NUMBER; driver may surface string/int64; we normalize to float64 for compare
 //   - BINARY_FLOAT  -> scanned as float64 (IEEE-754 float32 source)
 //   - BINARY_DOUBLE -> scanned as float64 (IEEE-754 float64 source)
@@ -122,6 +124,8 @@ func TestDriver_Select_NumericFloatTypes(t *testing.T) {
 			return float64(x), nil
 		case string:
 			return strconv.ParseFloat(x, 64)
+		case datatype.Number:
+			return x.Float64()
 		default:
 			return 0, fmt.Errorf("unsupported FLOAT scan type %T", v)
 		}
@@ -320,6 +324,8 @@ func TestDriver_Select_NumericFloatTypes_Prepared_Named(t *testing.T) {
 			return float64(x), nil
 		case string:
 			return strconv.ParseFloat(x, 64)
+		case datatype.Number:
+			return x.Float64()
 		default:
 			return 0, fmt.Errorf("unsupported FLOAT scan type %T", v)
 		}
@@ -432,7 +438,7 @@ func TestDriver_Select_NumericFloatTypes_Prepared_Named(t *testing.T) {
 
 // TestDriver_Select_Number_NoPrecisionScale
 // Purpose: Validate behavior for a generic NUMBER column (no precision/scale declared).
-// The driver may return int64 for integral values, or string for decimal values; we
+// The driver may return int64 for integral values, or datatype.Number for decimal values; we
 // normalize to float64 for comparison with an appropriate tolerance.
 func TestDriver_Select_Number_NoPrecisionScale(t *testing.T) {
 	t.Parallel()
@@ -491,6 +497,8 @@ func TestDriver_Select_Number_NoPrecisionScale(t *testing.T) {
 			return float64(x), nil
 		case string:
 			return strconv.ParseFloat(x, 64)
+		case datatype.Number:
+			return x.Float64()
 		default:
 			return 0, fmt.Errorf("unsupported NUMBER scan type %T", v)
 		}
@@ -509,7 +517,7 @@ func TestDriver_Select_Number_NoPrecisionScale(t *testing.T) {
 		{2, -987654321},
 		{3, 0},
 		{4, 123.456},
-		// Driver maps NULL NUMBER to 0 or "0" when scanning nullable numeric (see rows_result.go)
+		// Driver maps NULL NUMBER to 0 or datatype.Number("0") when scanning nullable numeric (see rows_result.go)
 		{5, 0.0},
 		{6, 0.0000001},
 	}
@@ -552,7 +560,8 @@ func TestDriver_Select_Number_NoPrecisionScale(t *testing.T) {
 // TestDriver_Select_Number_MaxPrecisionScale
 // Purpose: Validate driver behavior for NUMBER(38, 127), the maximum allowed precision
 // and scale as per Oracle documentation. Ensures that values with extremely high scale
-// are round-tripped correctly and exposed via Scan as strings preserving all digits.
+// are round-tripped correctly and exposed via Scan as datatype.Number, which keeps
+// working against plain string destinations while preserving all digits.
 func TestDriver_Select_Number_MaxPrecisionScale(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

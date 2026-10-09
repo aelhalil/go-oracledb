@@ -46,6 +46,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -62,7 +63,7 @@ Description:
 
 	Oracle NUMBER payloads can represent integers, fixed-point decimals, or floating-point values
 	depending on precision/scale metadata. This helper attempts integer decoding first to preserve
-	exactness, then falls back to a decimal string or float64 representation as appropriate.
+	exactness, then falls back to a decimal Number or float64 representation as appropriate.
 
 Parameters:
   - columnContext: Column metadata (precision/scale, name/index) required to interpret the wire value.
@@ -71,7 +72,7 @@ Parameters:
 Returns:
   - driver.Value: One of:
   - int64 for integer values (and for float-sentinel values that are actually integers),
-  - string for fixed-point decimals (canonical decimal representation),
+  - datatype.Number for fixed-point decimals (exact decimal representation),
   - float64 for FLOAT/NUMBER values with the float sentinel scale that require float decoding.
   - error: Non-nil if decoding fails.
 
@@ -80,7 +81,7 @@ Errors:
     cannot be decoded for the given metadata.
 */
 func DecodeNumberColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
-	// Prefer int64 for integer values; fallback to decimal string otherwise.
+	// Prefer int64 for integer values; fallback to decimal Number otherwise.
 	if columnContext.Scale == 0 {
 		v, err := converters.DecodeInt(data)
 		if err == nil {
@@ -113,8 +114,12 @@ func DecodeNumberColumn(columnContext columnContext, data driverCommon.B1Array) 
 	return val, nil
 }
 
+// GetScanTypeForNumberColumn returns the Go type database/sql reports for a
+// NUMBER column based on its precision/scale metadata: int64 for integer
+// columns, float64 for FLOAT columns using the float sentinel scale, and
+// datatype.Number for fixed-point decimals requiring exact representation.
 func GetScanTypeForNumberColumn(colCtx columnContext) reflect.Type {
-	// Prefer int64 for integer values; fallback to decimal string otherwise.
+	// Prefer int64 for integer values; fallback to decimal Number otherwise.
 	if colCtx.Scale == 0 {
 		return reflect.TypeFor[int64]()
 	}
@@ -123,7 +128,7 @@ func GetScanTypeForNumberColumn(colCtx columnContext) reflect.Type {
 		return reflect.TypeFor[float64]()
 	}
 
-	return reflect.TypeFor[string]()
+	return reflect.TypeFor[datatype.Number]()
 }
 
 /*
