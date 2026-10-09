@@ -46,6 +46,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -246,7 +247,7 @@ func (r *ttcRows) handleNull(i int, dtype DtyType, scale int8) driver.Value {
 //   - This helper does not return errors; defaults are mapped deterministically.
 //
 // Numeric defaults consider scale to decide between integer, floating-point, or
-// decimal string representations.
+// exact decimal (datatype.Number) representations.
 func _defaultValueForNull(dtype DtyType, scale int8) (driver.Value, bool) {
 	if resolver, ok := defaultNullValueResolvers[dtype]; ok {
 		return resolver(scale)
@@ -318,7 +319,7 @@ var defaultNullValueResolvers = map[DtyType]defaultNullValueResolver{
 //
 // Outputs:
 //   - driver.Value representing the numeric default (int64, float64, or
-//     decimal string).
+//     datatype.Number).
 //   - bool indicating whether the resolver produced a value. This allows the
 //     method to be used directly as a defaultNullValueResolver implementation.
 //
@@ -331,7 +332,7 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 	case NumberScaleFloatSentinel:
 		return float64(0), true
 	default:
-		return "0", true
+		return datatype.Number("0"), true
 	}
 }
 

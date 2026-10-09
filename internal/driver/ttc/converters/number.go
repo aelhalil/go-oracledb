@@ -48,6 +48,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -374,7 +375,7 @@ func DecodeBoolean(inputData []byte) (bool, error) {
 }
 
 /*
-DecodeDecimal decodes a NUMBER (including fractional values) to a full-precision decimal string.
+DecodeDecimal decodes a NUMBER (including fractional values) to a full-precision decimal datatype.Number.
 
 Input:
   - inputData: Oracle NUMBER wire-encoded bytes
@@ -383,13 +384,13 @@ Input:
     if < 0, rounds to the left of the decimal point per Oracle NUMBER(p,s) semantics; valid scales are -84 through 127
 
 Output:
-- string representation of the exact value, rounded per negative scale rules when scale < 0
+- datatype.Number holding the exact decimal text of the value, rounded per negative scale rules when scale < 0
 
 Errors:
 - OGD-00021 (ConverterEmptyInput) when inputData is empty
 - OGD-00023 (ConverterExpectedFormat) for invalid wire length, metadata, wire format, or digit ranges
 */
-func DecodeDecimal(inputData []byte, precision, scale int) (string, error) {
+func DecodeDecimal(inputData []byte, precision, scale int) (datatype.Number, error) {
 	if err := validateNumberMetadata(precision, scale); err != nil {
 		return "", err
 	}
@@ -397,9 +398,9 @@ func DecodeDecimal(inputData []byte, precision, scale int) (string, error) {
 	// Oracle zero is a complete one-byte wire value with no mantissa to parse.
 	if len(inputData) == 1 && inputData[0] == _numberZeroWireByte {
 		if scale >= 0 {
-			return new(big.Rat).SetInt64(0).FloatString(scale), nil
+			return datatype.Number(new(big.Rat).SetInt64(0).FloatString(scale)), nil
 		}
-		return "0", nil
+		return datatype.Number("0"), nil
 	}
 
 	bigMantissa, negative, exponent, _, err := _fromNumberBig(inputData)
@@ -430,7 +431,7 @@ func DecodeDecimal(inputData []byte, precision, scale int) (string, error) {
 
 	// If scale >= 0, format with that many digits after the decimal point.
 	if scale >= 0 {
-		return bigRat.FloatString(scale), nil
+		return datatype.Number(bigRat.FloatString(scale)), nil
 	}
 
 	// Negative scale: round to the left of the decimal point per Oracle NUMBER(p,s) semantics.
@@ -460,7 +461,7 @@ func DecodeDecimal(inputData []byte, precision, scale int) (string, error) {
 
 	// Multiply back by factor; result is an integer with no fractional digits.
 	rounded := new(big.Int).Mul(q, factor)
-	return rounded.String(), nil
+	return datatype.Number(rounded.String()), nil
 }
 
 /*
