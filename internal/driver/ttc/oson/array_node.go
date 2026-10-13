@@ -83,7 +83,7 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, op
 	if opcode&(osonOpChildNoSortBit|osonOpObjectSharedFieldIDsBit|osonOpObjectUpdateOverflowBit) != 0 {
 		details := fmt.Sprintf("array opcode 0x%02x sets object-only flag bits 0x%02x", opcode, opcode&0x07)
 		common.Odl.Debug("newArrayNodeAt: failed", "reason", details, "offset", arrayNodeOffset)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	elementCount, childOffsetArrayStart, err := readContainerCountAt(buf, arrayNodeOffset+1, opcode)
@@ -156,7 +156,7 @@ func (array *arrayNode) String() (string, error) {
 	jsonBytes, err := json.Marshal(array)
 	if err != nil {
 		common.Odl.Debug("arrayNode.String: failed", "error", err, "offset", array.offset)
-		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
+		return "", common.NewOracleError(oracleErrors.JSONRenderingError, nil)
 	}
 	common.Odl.Debug("arrayNode.String: completed", "offset", array.offset, "textBytes", len(jsonBytes))
 	return string(jsonBytes), nil

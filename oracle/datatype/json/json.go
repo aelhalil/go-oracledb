@@ -157,26 +157,15 @@ func NewJSONWithOptions(value any, opts Options) (JSON, error) {
 	return JSON{node: node, document: document, options: opts}, nil
 }
 
-// SetOptions replaces the options associated with jz. It returns an error for a
-// nil receiver.
-func (jz *JSON) SetOptions(opts Options) error {
-	if jz == nil {
-		common.Odl.Debug("JSON.SetOptions: failed", "reason", "nil receiver")
-		return common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "SetOptions")
-	}
+// SetOptions replaces the options associated with jz.
+func (jz *JSON) SetOptions(opts Options) {
 	jz.options = opts
-	return nil
 }
 
 // UnmarshalJSON implements encoding/json.Unmarshaler. It replaces jz with an
 // OSON document decoded from standard JSON text, preserving JSON numbers as
 // json.Number values.
 func (jz *JSON) UnmarshalJSON(data []byte) error {
-	if jz == nil {
-		common.Odl.Debug("JSON.UnmarshalJSON: failed", "reason", "nil receiver")
-		return common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "UnmarshalJSON")
-	}
-
 	var raw json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		common.Odl.Debug("JSON.UnmarshalJSON: failed", "reason", "invalid JSON text", "error", err)
@@ -205,11 +194,6 @@ func (jz *JSON) UnmarshalJSON(data []byte) error {
 // SQL NULL; use sql.Null[JSON] for nullable columns.
 func (jz *JSON) Scan(src any) error {
 	common.Odl.Debug("JSON.Scan: start", "source_type", fmt.Sprintf("%T", src))
-	if jz == nil {
-		common.Odl.Debug("JSON.Scan: failed", "reason", "nil receiver")
-		return common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Scan")
-	}
-
 	switch value := src.(type) {
 	case []byte:
 		if len(value) >= 4 && oson.IsOson(value) {
@@ -227,7 +211,7 @@ func (jz *JSON) Scan(src any) error {
 			return nil
 		}
 		common.Odl.Debug("JSON.Scan: failed", "reason", "byte slice is not an OSON document", "length", len(value))
-		return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	default:
 		sourceType := fmt.Sprintf("%T", src)
 		common.Odl.Debug("JSON.Scan: failed", "reason", "unsupported source type", "sourceType", sourceType)
@@ -273,15 +257,6 @@ func (jz JSON) Kind() (JSONKind, error) {
 // AsJSONObject returns a lazy object view of a fetched JSON value. It returns
 // an error if jz is uninitialized or its root is not an object.
 func (jz JSON) AsJSONObject() (JSONObject, error) {
-	kind, err := jz.Kind()
-	if err != nil {
-		return JSONObject{}, err
-	}
-	if kind != JSONObjectKind {
-		common.Odl.Debug("JSON.AsJSONObject: failed", "reason", "root is not an object", "kind", kind)
-		return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "object")
-	}
-
 	if obj, ok := jz.node.(drvCommon.JSONObjectNode); ok {
 		return JSONObject{node: obj, options: jz.options}, nil
 	}
@@ -292,15 +267,6 @@ func (jz JSON) AsJSONObject() (JSONObject, error) {
 // AsJSONArray returns a lazy array view of a fetched JSON value. It returns an
 // error if jz is uninitialized or its root is not an array.
 func (jz JSON) AsJSONArray() (JSONArray, error) {
-	kind, err := jz.Kind()
-	if err != nil {
-		return JSONArray{}, err
-	}
-	if kind != JSONArrayKind {
-		common.Odl.Debug("JSON.AsJSONArray: failed", "reason", "root is not an array", "kind", kind)
-		return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "array")
-	}
-
 	if arr, ok := jz.node.(drvCommon.JSONArrayNode); ok {
 		return JSONArray{node: arr, options: jz.options}, nil
 	}
@@ -312,14 +278,6 @@ func (jz JSON) AsJSONArray() (JSONArray, error) {
 // arrays are not scalars; JSON null is. The method returns an error if jz is
 // uninitialized or its root is not a scalar.
 func (jz JSON) AsJSONScalar() (JSONScalar, error) {
-	kind, err := jz.Kind()
-	if err != nil {
-		return JSONScalar{}, err
-	}
-	if kind != JSONScalarKind {
-		common.Odl.Debug("JSON.AsJSONScalar: failed", "reason", "root is not a scalar", "kind", kind)
-		return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "scalar")
-	}
 	if scalar, ok := jz.node.(drvCommon.JSONScalarNode); ok {
 		return JSONScalar{node: scalar, options: jz.options}, nil
 	}

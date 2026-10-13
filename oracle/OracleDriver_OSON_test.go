@@ -75,9 +75,7 @@ func TestDriver_OSON_RebindFetchedDocument(t *testing.T) {
 	}
 
 	var rebound ojson.JSON
-	if err = rebound.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber}); err != nil {
-		t.Fatalf("set number option failed: %v", err)
-	}
+	rebound.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber})
 	if err = db.QueryRowContext(ctx, "select doc from "+table+" where id = 2").Scan(&rebound); err != nil {
 		t.Fatalf("fetch rebound document failed: %v", err)
 	}
@@ -209,9 +207,7 @@ func TestDriver_OSON_Number(t *testing.T) {
 	}
 
 	var got ojson.JSON
-	if err = got.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber}); err != nil {
-		t.Fatalf("set JSON number option failed: %v", err)
-	}
+	got.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber})
 	if err = db.QueryRowContext(ctx, "select doc from "+table+" where id = 1").Scan(&got); err != nil {
 		t.Fatalf("fetch numeric JSON scalar failed: %v", err)
 	}

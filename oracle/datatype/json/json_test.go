@@ -234,17 +234,6 @@ func TestJSONScanRejectsInvalidSources(t *testing.T) {
 	}
 }
 
-// TestJSONNilReceiver verifies pointer methods reject a nil JSON receiver.
-func TestJSONNilReceiver(t *testing.T) {
-	var nilDoc *JSON
-	if err := nilDoc.Scan([]byte{0xff, 0x4a, 0x5a, 0x01}); err == nil {
-		t.Fatal("nil JSON.Scan() error = nil, want error")
-	}
-	if err := nilDoc.SetOptions(Options{}); err == nil {
-		t.Fatal("nil JSON.SetOptions() error = nil, want error")
-	}
-}
-
 // TestNewJSONWithOptionsRejectsUnsupportedValue verifies construction reports
 // an encoding error instead of returning a partial document for unsupported Go values.
 func TestNewJSONWithOptionsRejectsUnsupportedValue(t *testing.T) {
@@ -266,9 +255,7 @@ func TestJSONSetOptionsSurvivesScan(t *testing.T) {
 	}
 
 	var got JSON
-	if err = got.SetOptions(Options{NumberMode: NumberAsJSONNumber}); err != nil {
-		t.Fatalf("JSON.SetOptions() failed: %v", err)
-	}
+	got.SetOptions(Options{NumberMode: NumberAsJSONNumber})
 	if err = got.Scan(value); err != nil {
 		t.Fatalf("JSON.Scan() failed: %v", err)
 	}

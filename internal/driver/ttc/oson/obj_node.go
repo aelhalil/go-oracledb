@@ -104,7 +104,7 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drv
 		if !ok {
 			details := fmt.Sprintf("field ID %d not found", fieldIDValues[i])
 			common.Odl.Debug("newObjectNodeAt: failed", "reason", details, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		members[fieldName] = memberOffsets[i]
 	}
@@ -280,7 +280,7 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 		delegateOpcode&osonOpObjectSharedFieldIDsBit == 0 {
 		details := fmt.Sprintf("delegate object %d is not a field-ID owner", delegateOffset)
 		common.Odl.Debug("readObjectLayout: failed", "reason", details, "offset", offset, "delegateOffset", delegateOffset, "delegateOpcode", delegateOpcode)
-		return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+		return 0, 0, 0, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	count, nextOffset, readErr := readContainerCountAt(buf, delegateOffset+osonUB1Size, delegateOpcode)

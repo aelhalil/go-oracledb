@@ -41,7 +41,6 @@ package oson
 import (
 	"encoding/binary"
 	stdjson "encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -126,7 +125,7 @@ func classifyJSONValue(value any) (drvCommon.Kind, error) {
 		return drvCommon.KindObject, nil
 	default:
 		common.Odl.Debug("classifyJSONValue: failed", "reason", "unsupported Go type", "type", fmt.Sprintf("%T", value))
-		return 0, errors.New("unsupported OSON value type")
+		return 0, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 }
 
@@ -183,12 +182,12 @@ func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONN
 		if !header.containsNodeOffset(resolvedOffset) {
 			details := fmt.Sprintf("node offset %d outside tree", resolvedOffset)
 			common.Odl.Debug("newNodeAt: failed", "reason", details, "offset", resolvedOffset)
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		if _, exists := seen[resolvedOffset]; exists {
 			details := fmt.Sprintf("forwarding cycle at offset %d", resolvedOffset)
 			common.Odl.Debug("newNodeAt: failed", "reason", details, "offset", resolvedOffset)
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		seen[resolvedOffset] = struct{}{}
 
@@ -256,7 +255,7 @@ func redirectedNodeOffset(buf *osonBuffer, header *osonHeader, offset int, opcod
 	case opcode == osonOpUpdateOversizeReserved:
 		details := fmt.Sprintf("reserved update opcode 0x%02x", opcode)
 		common.Odl.Debug("redirectedNodeOffset: failed", "reason", details, "offset", offset, "opcode", opcode)
-		return 0, false, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+		return 0, false, common.NewOracleError(oracleErrors.InternalError, nil)
 	default:
 		return 0, false, nil
 	}
@@ -309,7 +308,7 @@ func readContainerCountAt(buf *osonBuffer, offset int, opcode drvCommon.UB1) (co
 	default:
 		details := fmt.Sprintf("opcode 0x%02x has no child count", opcode)
 		common.Odl.Debug("readContainerCountAt: failed", "reason", details, "offset", offset-1, "opcode", opcode)
-		return 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+		return 0, 0, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 }
 
@@ -349,9 +348,9 @@ func readChildOffsetsAt(buf *osonBuffer, header *osonHeader, containerOffset, st
 // Callers supply a non-nil buffer and a width from childOffsetSize or numFieldIDBytes.
 func ensureNodeTableRange(buf *osonBuffer, start, count, width int, stage string) error {
 	if start < 0 || count < 0 || start > buf.size() || count > (buf.size()-start)/width {
-		details := "node table outside document"
+		details := fmt.Sprintf("node table at offset %d with %d entries of %d bytes exceeds %d-byte document", start, count, width, buf.size())
 		common.Odl.Debug(stage+": failed", "reason", details, "start", start, "count", count, "width", width, "documentSize", buf.size())
-		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	return nil
 }

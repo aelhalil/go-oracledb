@@ -150,9 +150,7 @@ func main() {
 		// The default mode already chooses an appropriate Go number type. Set this
 		// option only when every JSON number should be json.Number. Use
 		// NumberAsFloat64 instead when every JSON number should be float64.
-		if err := doc.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber}); err != nil {
-			log.Fatal(err)
-		}
+		doc.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber})
 
 		// Use the access API to view the document root as an object.
 		object, err := doc.AsJSONObject()

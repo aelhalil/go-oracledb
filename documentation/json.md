@@ -249,7 +249,7 @@ Set `NumberAsJSONNumber` when every number should be returned as
 
 ```go
 var doc ojson.JSON
-_ := doc.SetOptions(ojson.Options{
+doc.SetOptions(ojson.Options{
 	NumberMode: ojson.NumberAsJSONNumber,
 })
 

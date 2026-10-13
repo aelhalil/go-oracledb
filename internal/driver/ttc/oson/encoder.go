@@ -40,7 +40,6 @@ package oson
 import (
 	"encoding/binary"
 	stdjson "encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -933,11 +932,11 @@ func (b *osonWriteBuffer) patchUint(offset, width, value int) error {
 
 	if uint64(value) > maxValue {
 		common.Odl.Debug("osonWriteBuffer.patchUint: failed", "reason", "value overflows slot", "value", value, "width", width)
-		return errors.New("patch value overflows reserved offset slot")
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	if offset > len(b.data)-width {
 		common.Odl.Debug("osonWriteBuffer.patchUint: failed", "reason", "slot outside buffer", "offset", offset, "width", width, "bufferLength", len(b.data))
-		return errors.New("patch range exceeds write buffer length")
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	switch width {

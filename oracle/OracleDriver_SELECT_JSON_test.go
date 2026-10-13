@@ -344,9 +344,7 @@ func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 func assertSameJSONDocument(t *testing.T, got ojson.JSON, wantText string) {
 	t.Helper()
 
-	if err := got.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber}); err != nil {
-		t.Fatalf("JSON.SetOptions() failed: %v", err)
-	}
+	got.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber})
 	gotValue, err := got.GetValue()
 	if err != nil {
 		t.Fatalf("JSON.GetValue() failed: %v", err)

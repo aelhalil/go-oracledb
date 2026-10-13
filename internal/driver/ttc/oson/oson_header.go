@@ -139,7 +139,7 @@ type osonHeader struct {
 //   - A populated header and buffer positioned at the primary tree segment.
 //
 // Errors:
-//   - Returns common.OsonHeaderError when the document is truncated, malformed,
+//   - Returns an internal error when the document is truncated, malformed,
 //     unsupported, or contains an invalid dictionary or tree segment.
 func newOsonHeader(buffer *osonBuffer) (*osonHeader, error) {
 	common.Odl.Debug("newOsonHeader: begin")
@@ -163,7 +163,7 @@ func newOsonHeader(buffer *osonBuffer) (*osonHeader, error) {
 //     can begin decoding nodes immediately
 //
 // Errors:
-//   - Returns common.OsonHeaderError for an invalid OSON header,
+//   - Returns an internal error for an invalid OSON header,
 //     dictionary, tree segment, or optional update-header tail.
 func (h *osonHeader) initialize(buf *osonBuffer) error {
 	// parse the fixed header first so dictionary sizes and counts are known.
@@ -196,7 +196,7 @@ func (h *osonHeader) initialize(buf *osonBuffer) error {
 		if !h.isSet(osonFlagInlineLeafMask) {
 			details := fmt.Sprintf("non-scalar header flags 0x%04x do not set required inline-leaf flag 0x%04x", h.flags, osonFlagInlineLeafMask)
 			common.Odl.Debug("osonHeader.initialize: failed", "reason", details, "flags", h.flags)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 	}
 
@@ -206,7 +206,7 @@ func (h *osonHeader) initialize(buf *osonBuffer) error {
 			"treeSegmentOffset", h.treeSegmentStartOffset,
 			"treeSegmentSize", h.treeSegmentByteLength,
 			"documentSize", buf.size())
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 
 	// some OSON documents carry an update header, overflow-address mapping, and an
@@ -218,7 +218,7 @@ func (h *osonHeader) initialize(buf *osonBuffer) error {
 	// consumers expect to start decoding from the main tree segment
 	if err := buf.setPosition(h.treeSegmentStartOffset); err != nil {
 		common.Odl.Debug("osonHeader.initialize: failed", "error", err, "treeSegmentOffset", h.treeSegmentStartOffset)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 	common.Odl.Debug("osonHeader.initialize: completed",
 		"treeSegmentOffset", h.treeSegmentStartOffset,
@@ -234,7 +234,7 @@ func (h *osonHeader) initialize(buf *osonBuffer) error {
 //   - buf: buffer containing the primary tree followed, optionally, by update metadata.
 //
 // Errors:
-//   - Returns common.OsonHeaderError when an update header, mapping segment, or
+//   - Returns an internal error when an update header, mapping segment, or
 //     extended tree segment is truncated or structurally inconsistent.
 func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 	// some OSON documents append partial-update metadata after the primary tree:
@@ -249,39 +249,39 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 	if h.formatVersion != 2 && h.formatVersion != 4 {
 		details := fmt.Sprintf("update metadata is not valid for OSON version %d", h.formatVersion)
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "reason", details)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	if err := buf.setPosition(updateHeaderOffset); err != nil {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "updateHeaderOffset", updateHeaderOffset)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 
 	flags, err := buf.readUB2()
 	if err != nil {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "step", "update-flags")
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 	numMappings, err := buf.readUB2()
 	if err != nil {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "step", "mapping-count")
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 
 	reserved, err := buf.readUB4()
 	if err != nil {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "step", "reserved")
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 	mappingSegmentSize, err := buf.readUB4()
 	if err != nil {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "step", "mapping-segment-size")
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 	extendedTreeSize, err := buf.readUB4()
 	if err != nil {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "step", "extended-tree-size")
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 
 	mappingBytes := int(mappingSegmentSize)
@@ -289,13 +289,13 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 	if flags&^osonFlagUpdateOverflowSegmentUB2Mask != 0 || reserved != 0 {
 		details := fmt.Sprintf("update header flags 0x%04x contain unsupported bits 0x%04x or reserved field is 0x%08x", flags, flags&^osonFlagUpdateOverflowSegmentUB2Mask, reserved)
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "reason", details, "flags", flags, "reserved", reserved)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	mappingOffset := buf.position()
 	if err := buf.ensureRange(mappingOffset, mappingBytes, "osonHeader.readOptionalUpdateHeader"); err != nil {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "mappingOffset", mappingOffset, "mappingBytes", mappingBytes)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 
 	h.updateHeaderFlags = flags
@@ -305,12 +305,12 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 	h.extendedTreeSegmentStartOffset = mappingOffset + mappingBytes
 	if err := buf.ensureRange(h.extendedTreeSegmentStartOffset, extendedBytes, "osonHeader.readOptionalUpdateHeader"); err != nil {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "extendedTreeOffset", h.extendedTreeSegmentStartOffset, "extendedTreeBytes", extendedBytes)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 	if h.extendedTreeSegmentStartOffset+extendedBytes != buf.size() {
 		details := fmt.Sprintf("extended tree ends at byte %d but OSON document size is %d", h.extendedTreeSegmentStartOffset+extendedBytes, buf.size())
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "reason", details)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	h.extendedTreeSegmentByteLength = extendedTreeSize
 
@@ -323,19 +323,19 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 	if int(numMappings) > 0 && int(numMappings) > mappingBytes/entrySize {
 		details := fmt.Sprintf("update header mapping count %d exceeds mapping segment capacity %d entries", numMappings, mappingBytes/entrySize)
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "reason", details, "mappingBytes", mappingBytes, "entryWidth", entrySize)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	for i := 0; i < int(numMappings); i++ {
 		if h.isSetUpdate(osonFlagUpdateOverflowSegmentUB2Mask) {
 			from, err := buf.readUB2()
 			if err != nil {
 				common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "index", i, "width", osonUB2Size)
-				return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+				return err
 			}
 			to, err := buf.readUB2()
 			if err != nil {
 				common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "index", i, "width", osonUB2Size)
-				return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+				return err
 			}
 			if err := h.addForwardingAddress(int(from), int(to), extendedBytes); err != nil {
 				return err
@@ -348,12 +348,12 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 		from, err := buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "index", i, "width", osonUB4Size)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return err
 		}
 		to, err := buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "error", err, "index", i, "width", osonUB4Size)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return err
 		}
 
 		if err := h.addForwardingAddress(int(from), int(to), extendedBytes); err != nil {
@@ -375,17 +375,17 @@ func (h *osonHeader) addForwardingAddress(from, to, extendedTreeSize int) error 
 	if from < 0 || from >= int(h.treeSegmentByteLength) {
 		details := fmt.Sprintf("update mapping source offset %d is outside primary tree range [0,%d)", from, h.treeSegmentByteLength)
 		common.Odl.Debug("osonHeader.addForwardingAddress: failed", "reason", details, "from", from)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	if to < 0 || to >= extendedTreeSize {
 		details := fmt.Sprintf("update mapping target offset %d is outside extended tree range [0,%d)", to, extendedTreeSize)
 		common.Odl.Debug("osonHeader.addForwardingAddress: failed", "reason", details, "to", to)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	if _, exists := h.forwardingAddresses[from]; exists {
 		details := fmt.Sprintf("duplicate update mapping source offset %d", from)
 		common.Odl.Debug("osonHeader.addForwardingAddress: failed", "reason", details, "from", from)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	h.forwardingAddresses[from] = to
 	return nil
@@ -400,27 +400,27 @@ func (h *osonHeader) addForwardingAddress(from, to, extendedTreeSize int) error 
 //   - Layout metadata used by dictionary readers.
 //
 // Errors:
-//   - Returns common.OsonHeaderError for truncated, malformed, or unsupported headers.
+//   - Returns an internal error for truncated, malformed, or unsupported headers.
 func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error) {
 	layout := _parsedDictionaryLayout{}
 
 	if buf.remaining() < osonHeaderMinSize {
 		details := fmt.Sprintf("truncated OSON header, expected at least %d bytes, have %d", osonHeaderMinSize, buf.remaining())
 		common.Odl.Debug("osonHeader.readHeader: failed", "reason", details, "remaining", buf.remaining())
-		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return layout, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	// Read and validate the fixed OSON magic/version word.
 	magicAndVersion, err := buf.readUB4()
 	if err != nil {
 		common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "magic-version")
-		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return layout, err
 	}
 	mv := uint32(magicAndVersion)
 	if mv&osonMagicPrefixMask != osonMagicPrefix {
 		details := fmt.Sprintf("invalid OSON magic 0x%08x, expected 0x%08x", mv&osonMagicPrefixMask, osonMagicPrefix)
 		common.Odl.Debug("osonHeader.readHeader: failed", "reason", details)
-		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return layout, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	h.formatVersion = drvCommon.UB1(mv & osonVersionByteMask)
@@ -429,17 +429,17 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 	if h.formatVersion < osonFormatMinVersion || h.formatVersion > osonFormatMaxVersion {
 		details := fmt.Sprintf("unsupported OSON version %d", h.formatVersion)
 		common.Odl.Debug("osonHeader.readHeader: failed", "reason", details, "version", h.formatVersion)
-		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return layout, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	if h.flags, err = buf.readUB2(); err != nil {
 		common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "flags")
-		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return layout, err
 	}
 	if h.flags&osonFlagReservedMask != 0 {
 		details := fmt.Sprintf("root-header flags 0x%04x set reserved bits 0x%04x", h.flags, h.flags&osonFlagReservedMask)
 		common.Odl.Debug("osonHeader.readHeader: failed", "reason", details, "flags", h.flags)
-		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+		return layout, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	// scalar documents do not carry dictionaries or tiny-node statistics.
@@ -458,21 +458,21 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 		val, err := buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "distinct-field-count-ub4")
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return layout, err
 		}
 		layout.primaryCount = int(val)
 	case h.isSet(osonFlagDistinctFieldCountUB2Mask):
 		val, err := buf.readUB2()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "distinct-field-count-ub2")
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return layout, err
 		}
 		layout.primaryCount = int(val)
 	default:
 		val, err := buf.readUB1()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "distinct-field-count-ub1")
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return layout, err
 		}
 		layout.primaryCount = int(val)
 	}
@@ -483,14 +483,14 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 		val, err := buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "field-heap-size-ub4")
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return layout, err
 		}
 		layout.primaryHeapSize = int(val)
 	} else {
 		val, err := buf.readUB2()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "field-heap-size-ub2")
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return layout, err
 		}
 		layout.primaryHeapSize = int(val)
 	}
@@ -501,23 +501,23 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 		// The secondary flag word controls only the long-key dictionary layout.
 		if h.secondaryFlags, err = buf.readUB2(); err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "flags2")
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return layout, err
 		}
 		if h.secondaryFlags&osonFlagSecondaryReservedMask != 0 {
 			details := fmt.Sprintf("secondary-header flags 0x%04x set reserved bits 0x%04x", h.secondaryFlags, h.secondaryFlags&osonFlagSecondaryReservedMask)
 			common.Odl.Debug("osonHeader.readHeader: failed", "reason", details, "flags", h.secondaryFlags)
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+			return layout, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		val, err := buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "unique-fields2")
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return layout, err
 		}
 		layout.secondaryCount = int(val)
 		val, err = buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "field-heap-size2")
-			return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return layout, err
 		}
 		layout.secondaryHeapSize = int(val)
 	}
@@ -533,7 +533,7 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 	// Non-scalar documents store a tiny-node statistic after the tree size.
 	if h.tinyNodeStatCount, err = buf.readUB2(); err != nil {
 		common.Odl.Debug("osonHeader.readHeader: failed", "error", err, "step", "tiny-node-count")
-		return layout, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return layout, err
 	}
 
 	common.Odl.Debug("osonHeader.readHeader: parsed",
@@ -554,21 +554,21 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 // selected by the receiver's header flags.
 //
 // Errors:
-//   - Returns common.OsonHeaderError if the selected UB2 or UB4 size field is truncated.
+//   - Returns an internal error if the selected UB2 or UB4 size field is truncated.
 func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (drvCommon.UB4, error) {
 	// Tree size width is selected by a primary header flag.
 	if h.isSet(osonFlagTreeSegmentSizeUB4Mask) {
 		val, err := buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readTreeSegmentSize: failed", "error", err, "encoding", "UB4")
-			return 0, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return 0, err
 		}
 		return val, nil
 	}
 	val, err := buf.readUB2()
 	if err != nil {
 		common.Odl.Debug("osonHeader.readTreeSegmentSize: failed", "error", err, "encoding", "UB2")
-		return 0, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return 0, err
 	}
 	return drvCommon.UB4(val), nil
 }
@@ -585,7 +585,7 @@ func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (drvCommon.UB4, error)
 //   - layout: counts and heap sizes read from the fixed header; primaryCount is positive.
 //
 // Errors:
-//   - Returns common.OsonHeaderError for truncated arrays, invalid offsets, or malformed heap entries.
+//   - Returns an internal error for truncated arrays, invalid offsets, or malformed heap entries.
 func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictionaryLayout) error {
 	count := layout.primaryCount
 
@@ -604,7 +604,7 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 	heap, err := buf.readSlice(heapSize)
 	if err != nil {
 		common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "error", err, "step", "read-heap", "heapSize", heapSize)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 
 	common.Odl.Debug("osonHeader.readPrimaryDictionary: begin", "count", count, "heapSize", heapSize)
@@ -622,7 +622,7 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 		if offset < 0 || offset+osonUB1Size > len(heap) {
 			details := fmt.Sprintf("primary dictionary entry %d has heap offset %d outside heap size %d", i, offset, len(heap))
 			common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "reason", details, "offset", offset)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		entry := heap[offset:]
 
@@ -634,13 +634,13 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 		if length > len(entry) {
 			details := fmt.Sprintf("primary dictionary entry at offset %d declares name length %d exceeding remaining heap %d", offset, length, len(entry))
 			common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "reason", details, "offset", offset)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		nameBytes := entry[:length]
 		if !utf8.Valid(nameBytes) {
 			details := fmt.Sprintf("primary dictionary entry at offset %d contains invalid UTF-8 in its %d-byte name", offset, length)
 			common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "reason", details, "offset", offset)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		names[i] = string(nameBytes)
 	}
@@ -666,7 +666,7 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 //   - layout: metadata from a v3+ header with a positive secondaryCount.
 //
 // Errors:
-//   - Returns common.OsonHeaderError for truncated arrays,
+//   - Returns an internal error for truncated arrays,
 //     invalid offsets, or malformed long-key heap entries.
 func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDictionaryLayout) error {
 	count := layout.secondaryCount
@@ -686,7 +686,7 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 	heap, err := buf.readSlice(heapSize)
 	if err != nil {
 		common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "error", err, "step", "read-heap", "heapSize2", heapSize)
-		return common.NewOracleError(oracleErrors.OsonHeaderError, err)
+		return err
 	}
 
 	common.Odl.Debug("osonHeader.readSecondaryDictionary: begin", "count", count, "heapSize2", heapSize)
@@ -704,7 +704,7 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 		if offset < 0 || offset+osonUB2Size > len(heap) {
 			details := fmt.Sprintf("secondary dictionary entry %d has heap offset %d outside heap size %d", i, offset, len(heap))
 			common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "reason", details, "offset", offset)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		entry := heap[offset:]
 		// Secondary dictionary entries use a big-endian 2-byte length prefix.
@@ -714,13 +714,13 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 		if length > len(entry) {
 			details := fmt.Sprintf("secondary dictionary entry at offset %d declares name length %d exceeding remaining heap %d", offset, length, len(entry))
 			common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "reason", details, "offset", offset)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		nameBytes := entry[:length]
 		if !utf8.Valid(nameBytes) {
 			details := fmt.Sprintf("secondary dictionary entry at offset %d contains invalid UTF-8 in its %d-byte name", offset, length)
 			common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "reason", details, "offset", offset)
-			return common.NewOracleError(oracleErrors.OsonHeaderError, nil)
+			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		names[i] = string(nameBytes)
 	}
@@ -740,7 +740,7 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 //   - Compact on-wire hash values widened to uint32 for uniform lookup.
 //
 // Errors:
-//   - Returns common.OsonHeaderError if the hash array is truncated.
+//   - Returns an internal error if the hash array is truncated.
 func (h *osonHeader) readPrimaryHashes(buf *osonBuffer, count int) ([]uint32, error) {
 	hashIDs := make([]uint32, count)
 	for i := range count {
@@ -748,7 +748,7 @@ func (h *osonHeader) readPrimaryHashes(buf *osonBuffer, count int) ([]uint32, er
 		val, err := buf.readUB1()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readPrimaryHashes: failed", "error", err, "index", i, "width", osonPrimaryDictHashIDSizeUB1)
-			return nil, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return nil, err
 		}
 		hashIDs[i] = uint32(val)
 	}
@@ -759,7 +759,7 @@ func (h *osonHeader) readPrimaryHashes(buf *osonBuffer, count int) ([]uint32, er
 // Offsets are relative to the start of the primary dictionary heap.
 //
 // Errors:
-//   - Returns common.OsonHeaderError if the flag-selected UB2 or UB4 offset array is truncated.
+//   - Returns an internal error if the flag-selected UB2 or UB4 offset array is truncated.
 func (h *osonHeader) readPrimaryOffsets(buf *osonBuffer, count int) ([]int, error) {
 	offsets := make([]int, count)
 	for i := range count {
@@ -768,7 +768,7 @@ func (h *osonHeader) readPrimaryOffsets(buf *osonBuffer, count int) ([]int, erro
 			val, err := buf.readUB4()
 			if err != nil {
 				common.Odl.Debug("osonHeader.readPrimaryOffsets: failed", "error", err, "index", i, "width", osonUB4Size)
-				return nil, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+				return nil, err
 			}
 
 			offsets[i] = int(val)
@@ -777,7 +777,7 @@ func (h *osonHeader) readPrimaryOffsets(buf *osonBuffer, count int) ([]int, erro
 			val, err := buf.readUB2()
 			if err != nil {
 				common.Odl.Debug("osonHeader.readPrimaryOffsets: failed", "error", err, "index", i, "width", osonUB2Size)
-				return nil, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+				return nil, err
 			}
 			offsets[i] = int(val)
 		}
@@ -791,7 +791,7 @@ func (h *osonHeader) readPrimaryOffsets(buf *osonBuffer, count int) ([]int, erro
 //   - Compact on-wire hash values widened to uint32 for uniform lookup.
 //
 // Errors:
-//   - Returns common.OsonHeaderError if the hash array is truncated.
+//   - Returns an internal error if the hash array is truncated.
 func (h *osonHeader) readSecondaryHashes(buf *osonBuffer, count int) ([]uint32, error) {
 	hashIDs := make([]uint32, count)
 	for i := range count {
@@ -799,7 +799,7 @@ func (h *osonHeader) readSecondaryHashes(buf *osonBuffer, count int) ([]uint32, 
 		val, err := buf.readUB2()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readSecondaryHashes: failed", "error", err, "index", i, "width", osonSecondaryDictHashIDSizeUB2)
-			return nil, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return nil, err
 		}
 		hashIDs[i] = uint32(val)
 	}
@@ -810,7 +810,7 @@ func (h *osonHeader) readSecondaryHashes(buf *osonBuffer, count int) ([]uint32, 
 // The v3+ secondary flags choose whether each offset is UB2 or UB4.
 //
 // Errors:
-//   - Returns common.OsonHeaderError if the flag-selected offset array is truncated.
+//   - Returns an internal error if the flag-selected offset array is truncated.
 func (h *osonHeader) readSecondaryOffsets(buf *osonBuffer, count int) ([]int, error) {
 	offsets := make([]int, count)
 	if h.secondaryFlags&osonFlagSecondaryFieldOffsetsUB2Mask != 0 {
@@ -819,7 +819,7 @@ func (h *osonHeader) readSecondaryOffsets(buf *osonBuffer, count int) ([]int, er
 			val, err := buf.readUB2()
 			if err != nil {
 				common.Odl.Debug("osonHeader.readSecondaryOffsets: failed", "error", err, "index", i, "width", osonUB2Size)
-				return nil, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+				return nil, err
 			}
 			offsets[i] = int(val)
 		}
@@ -830,7 +830,7 @@ func (h *osonHeader) readSecondaryOffsets(buf *osonBuffer, count int) ([]int, er
 		val, err := buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readSecondaryOffsets: failed", "error", err, "index", i, "width", osonUB4Size)
-			return nil, common.NewOracleError(oracleErrors.OsonHeaderError, err)
+			return nil, err
 		}
 		offsets[i] = int(val)
 	}
@@ -939,12 +939,12 @@ func (h *osonHeader) containsNodeOffset(absoluteOffset int) bool {
 //   - Absolute document offset of the forwarded node.
 //
 // Errors:
-//   - Returns common.OsonParsingError when the document has no extended tree segment.
+//   - Returns an internal error when the document has no extended tree segment.
 func (h *osonHeader) resolveForwardedOffset(relativeOffset int) (int, error) {
 	if h.extendedTreeSegmentStartOffset == 0 || relativeOffset < 0 || relativeOffset >= int(h.extendedTreeSegmentByteLength) {
 		details := fmt.Sprintf("forwarded offset %d outside tree", relativeOffset)
 		common.Odl.Debug("osonHeader.resolveForwardedOffset: failed", "reason", details, "relativeOffset", relativeOffset)
-		return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+		return 0, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	return h.extendedTreeSegmentStartOffset + relativeOffset, nil
 }
@@ -959,7 +959,7 @@ func (h *osonHeader) resolveForwardedOffset(relativeOffset int) (int, error) {
 //   - Absolute document offset of the mapped node in the extended tree segment.
 //
 // Errors:
-//   - Returns common.OsonParsingError when no mapping exists or the document has
+//   - Returns an internal error when no mapping exists or the document has
 //     no extended tree segment.
 func (h *osonHeader) resolveOverflowOffset(absoluteOffset int) (int, error) {
 	// Overflow mappings are keyed by the original node's tree-relative position in
@@ -969,7 +969,7 @@ func (h *osonHeader) resolveOverflowOffset(absoluteOffset int) (int, error) {
 	if !ok {
 		details := fmt.Sprintf("no overflow mapping for offset %d", relativeOffset)
 		common.Odl.Debug("osonHeader.resolveOverflowOffset: failed", "reason", details, "absoluteOffset", absoluteOffset, "relativeOffset", relativeOffset)
-		return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil)
+		return 0, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	return h.resolveForwardedOffset(forwarded)
 }

@@ -221,7 +221,7 @@ func TestParseRejectsDelegateWithoutReferredBit(t *testing.T) {
 	if err == nil {
 		t.Fatal("newNodeAt() error = nil, want delegate-ownership error")
 	}
-	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
+	assertOracleErrorCode(t, err, oracleErrors.InternalError)
 }
 
 // TestParseRejectsInvalidChildOffset verifies child offsets pointing outside

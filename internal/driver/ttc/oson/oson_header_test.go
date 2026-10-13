@@ -119,7 +119,7 @@ func TestHeaderRejectsInvalidUpdateMetadata(t *testing.T) {
 			if err == nil {
 				t.Fatal("newOsonHeader() error = nil, want malformed-update error")
 			}
-			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+			assertOracleErrorCode(t, err, oracleErrors.InternalError)
 		})
 	}
 }
@@ -158,7 +158,7 @@ func TestHeaderRejectsOutOfRangeUpdateMappings(t *testing.T) {
 			if err == nil {
 				t.Fatal("newOsonHeader(invalid mapping) error = nil, want validation error")
 			}
-			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+			assertOracleErrorCode(t, err, oracleErrors.InternalError)
 		})
 	}
 }
@@ -231,7 +231,7 @@ func TestHeaderRejectsMalformedDictionaryHeap(t *testing.T) {
 			if err == nil {
 				t.Fatal("newOsonHeader(malformed heap) error = nil, want malformed-dictionary error")
 			}
-			assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
+			assertOracleErrorCode(t, err, oracleErrors.InternalError)
 		})
 	}
 }
