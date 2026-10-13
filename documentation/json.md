@@ -219,8 +219,7 @@ See [Control number precision](#control-number-precision) for how to set the opt
 values are decoded into Go values. Use it to customize these conversions for
 your application. Each option applies to the whole document, not to individual values.
 
-### Control number precision
-
+### Control number representation
 The `NumberMode` option selects the Go type returned when reading JSON numbers with
 `GetValue()`. It applies to every number in the document.
 
