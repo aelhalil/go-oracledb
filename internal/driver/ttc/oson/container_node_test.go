@@ -224,6 +224,27 @@ func TestParseRejectsDelegateWithoutReferredBit(t *testing.T) {
 	assertOracleErrorCode(t, err, oracleErrors.InternalError)
 }
 
+// TestParseRejectsDuplicateFieldID verifies an object whose field-ID array
+// repeats a field ID is rejected.
+func TestParseRejectsDuplicateFieldID(t *testing.T) {
+	// Tree layout: [object opcode][count=2][fid=1][fid=1][child offset=6][child offset=7][scalar 0x31][scalar 0x30]
+	// Both members use field ID 1, so the second would overwrite the first.
+	buf := newOsonBuffer(drvCommon.B1Array{
+		osonOpObjectType, 2, 1, 1, 0x00, 0x06, 0x00, 0x07,
+		osonOpTrue,
+		osonOpNull,
+	})
+	header := &osonHeader{
+		treeSegmentByteLength: 10,
+		fieldDictionary:       dictionary{fieldNames: []string{"a"}},
+	}
+	_, err := newNodeAt(buf, header, 0)
+	if err == nil {
+		t.Fatal("newNodeAt() error = nil, want duplicate-field-ID error")
+	}
+	assertOracleErrorCode(t, err, oracleErrors.InternalError)
+}
+
 // TestParseRejectsInvalidChildOffset verifies child offsets pointing outside
 // the tree segment fail cleanly.
 func TestParseRejectsInvalidChildOffset(t *testing.T) {

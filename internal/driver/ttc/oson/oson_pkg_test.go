@@ -76,6 +76,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParseRejectsInvalidChildOffset", Categories: "unitary", Fn: TestParseRejectsInvalidChildOffset},
 	{Name: "TestParseRejectsForwardingCycle", Categories: "unitary", Fn: TestParseRejectsForwardingCycle},
 	{Name: "TestParseRejectsDelegateWithoutReferredBit", Categories: "unitary", Fn: TestParseRejectsDelegateWithoutReferredBit},
+	{Name: "TestParseRejectsDuplicateFieldID", Categories: "unitary", Fn: TestParseRejectsDuplicateFieldID},
 
 	// Decode valid documents and verify scalar values, object and array access,
 	// independent Oracle samples, and JSON rendering.

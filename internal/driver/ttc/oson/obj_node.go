@@ -106,6 +106,11 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drv
 			common.Odl.Debug("newObjectNodeAt: failed", "reason", details, "offset", offset, "member", i, "fieldID", fieldIDValues[i])
 			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
+		if _, dup := members[fieldName]; dup {
+			details := fmt.Sprintf("field ID %d duplicates an earlier member", fieldIDValues[i])
+			common.Odl.Debug("newObjectNodeAt: failed", "reason", details, "offset", offset, "member", i, "fieldID", fieldIDValues[i])
+			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+		}
 		members[fieldName] = memberOffsets[i]
 	}
 
