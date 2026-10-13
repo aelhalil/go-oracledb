@@ -414,7 +414,7 @@ func (b *readBuffer) SetPosition(position uint) error {
 
 // ReadUB1 reads one unsigned byte.
 func (b *readBuffer) ReadUB1() (UB1, error) {
-	data, err := b.read(1)
+	data, err := b._read(1)
 	if err != nil {
 		return 0, err
 	}
@@ -423,7 +423,7 @@ func (b *readBuffer) ReadUB1() (UB1, error) {
 
 // ReadUB2 reads a two-byte unsigned value.
 func (b *readBuffer) ReadUB2() (UB2, error) {
-	data, err := b.read(2)
+	data, err := b._read(2)
 	if err != nil {
 		return 0, err
 	}
@@ -432,7 +432,7 @@ func (b *readBuffer) ReadUB2() (UB2, error) {
 
 // ReadUB4 reads a four-byte unsigned value.
 func (b *readBuffer) ReadUB4() (UB4, error) {
-	data, err := b.read(4)
+	data, err := b._read(4)
 	if err != nil {
 		return 0, err
 	}
@@ -441,7 +441,7 @@ func (b *readBuffer) ReadUB4() (UB4, error) {
 
 // ReadUB8 reads an eight-byte unsigned value.
 func (b *readBuffer) ReadUB8() (UB8, error) {
-	data, err := b.read(8)
+	data, err := b._read(8)
 	if err != nil {
 		return 0, err
 	}
@@ -468,12 +468,12 @@ func (b *readBuffer) ReadSB4() (SB4, error) {
 
 // ReadBytes reads length bytes and advances the cursor.
 func (b *readBuffer) ReadBytes(length uint) (B1Array, error) {
-	return b.read(length)
+	return b._read(length)
 }
 
 // ReadUB1At reads one unsigned byte at offset.
 func (b *readBuffer) ReadUB1At(offset uint) (UB1, error) {
-	data, err := b.readAt(offset, 1)
+	data, err := b._sliceAt(offset, 1)
 	if err != nil {
 		return 0, err
 	}
@@ -482,7 +482,7 @@ func (b *readBuffer) ReadUB1At(offset uint) (UB1, error) {
 
 // ReadUB2At reads a two-byte unsigned value at offset.
 func (b *readBuffer) ReadUB2At(offset uint) (UB2, error) {
-	data, err := b.readAt(offset, 2)
+	data, err := b._sliceAt(offset, 2)
 	if err != nil {
 		return 0, err
 	}
@@ -491,7 +491,7 @@ func (b *readBuffer) ReadUB2At(offset uint) (UB2, error) {
 
 // ReadUB4At reads a four-byte unsigned value at offset.
 func (b *readBuffer) ReadUB4At(offset uint) (UB4, error) {
-	data, err := b.readAt(offset, 4)
+	data, err := b._sliceAt(offset, 4)
 	if err != nil {
 		return 0, err
 	}
@@ -500,7 +500,7 @@ func (b *readBuffer) ReadUB4At(offset uint) (UB4, error) {
 
 // ReadUB8At reads an eight-byte unsigned value at offset.
 func (b *readBuffer) ReadUB8At(offset uint) (UB8, error) {
-	data, err := b.readAt(offset, 8)
+	data, err := b._sliceAt(offset, 8)
 	if err != nil {
 		return 0, err
 	}
@@ -527,15 +527,15 @@ func (b *readBuffer) ReadSB4At(offset uint) (SB4, error) {
 
 // ReadBytesAt reads length bytes at offset without moving the cursor.
 func (b *readBuffer) ReadBytesAt(offset, length uint) (B1Array, error) {
-	return b.readAt(offset, length)
+	return b._sliceAt(offset, length)
 }
 
-// read returns the next length bytes and advances the cursor, or fails when
+// _read returns the next length bytes and advances the cursor, or fails when
 // fewer bytes remain.
-func (b *readBuffer) read(length uint) (B1Array, error) {
+func (b *readBuffer) _read(length uint) (B1Array, error) {
 	remaining := b.Size() - b.pos
 	if length > remaining {
-		common.Odl.Finest("readBuffer.read: failed", "reason", "buffer underflow", "position", b.pos, "length", length, "remaining", remaining, "size", b.Size())
+		common.Odl.Finest("readBuffer._read: failed", "reason", "buffer underflow", "position", b.pos, "length", length, "remaining", remaining, "size", b.Size())
 		return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
 	start := b.pos
@@ -543,18 +543,18 @@ func (b *readBuffer) read(length uint) (B1Array, error) {
 	return b.data[int(start):int(b.pos)], nil
 }
 
-// readAt returns length bytes at offset without moving the cursor, or fails
+// _sliceAt returns length bytes at offset without moving the cursor, or fails
 // when the offset is outside the buffer or the range extends past its end.
 // The bounds comparison is arranged so that arithmetic cannot overflow even
 // for hostile offsets.
-func (b *readBuffer) readAt(offset, length uint) (B1Array, error) {
+func (b *readBuffer) _sliceAt(offset, length uint) (B1Array, error) {
 	size := b.Size()
 	if offset > size {
-		common.Odl.Finest("readBuffer.readAt: failed", "reason", "offset outside buffer", "offset", offset, "size", size)
+		common.Odl.Finest("readBuffer._sliceAt: failed", "reason", "offset outside buffer", "offset", offset, "size", size)
 		return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
 	if length > size-offset {
-		common.Odl.Finest("readBuffer.readAt: failed", "reason", "range extends past end of buffer", "offset", offset, "length", length, "size", size)
+		common.Odl.Finest("readBuffer._sliceAt: failed", "reason", "range extends past end of buffer", "offset", offset, "length", length, "size", size)
 		return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
 	return b.data[int(offset):int(offset+length)], nil
@@ -619,7 +619,7 @@ func (b *writeBuffer) Reserve(length uint) uint {
 
 // WriteUB1At overwrites one unsigned byte at offset.
 func (b *writeBuffer) WriteUB1At(offset uint, value UB1) error {
-	data, err := b.writeAt(offset, 1)
+	data, err := b._sliceAt(offset, 1)
 	if err != nil {
 		return err
 	}
@@ -629,7 +629,7 @@ func (b *writeBuffer) WriteUB1At(offset uint, value UB1) error {
 
 // WriteUB2At overwrites a two-byte unsigned value at offset.
 func (b *writeBuffer) WriteUB2At(offset uint, value UB2) error {
-	data, err := b.writeAt(offset, 2)
+	data, err := b._sliceAt(offset, 2)
 	if err != nil {
 		return err
 	}
@@ -639,7 +639,7 @@ func (b *writeBuffer) WriteUB2At(offset uint, value UB2) error {
 
 // WriteUB4At overwrites a four-byte unsigned value at offset.
 func (b *writeBuffer) WriteUB4At(offset uint, value UB4) error {
-	data, err := b.writeAt(offset, 4)
+	data, err := b._sliceAt(offset, 4)
 	if err != nil {
 		return err
 	}
@@ -649,7 +649,7 @@ func (b *writeBuffer) WriteUB4At(offset uint, value UB4) error {
 
 // WriteUB8At overwrites an eight-byte unsigned value at offset.
 func (b *writeBuffer) WriteUB8At(offset uint, value UB8) error {
-	data, err := b.writeAt(offset, 8)
+	data, err := b._sliceAt(offset, 8)
 	if err != nil {
 		return err
 	}
@@ -674,7 +674,7 @@ func (b *writeBuffer) WriteSB4At(offset uint, value SB4) error {
 
 // WriteBytesAt overwrites the bytes of value at offset.
 func (b *writeBuffer) WriteBytesAt(offset uint, value B1Array) error {
-	data, err := b.writeAt(offset, uint(len(value)))
+	data, err := b._sliceAt(offset, uint(len(value)))
 	if err != nil {
 		return err
 	}
@@ -700,13 +700,13 @@ func (b *writeBuffer) grow(length uint) B1Array {
 	return b.data[start:end]
 }
 
-// writeAt returns the existing range offset..offset+length for in-place
+// _sliceAt returns the existing range offset..offset+length for in-place
 // overwrites, without changing the append position.
-func (b *writeBuffer) writeAt(offset, length uint) (B1Array, error) {
+func (b *writeBuffer) _sliceAt(offset, length uint) (B1Array, error) {
 	size := b.Size()
 	if offset <= size && length <= size-offset {
 		return b.data[int(offset):int(offset+length)], nil
 	}
-	common.Odl.Finest("writeBuffer.writeAt: failed", "reason", "range outside buffer", "offset", offset, "length", length, "size", size)
+	common.Odl.Finest("writeBuffer._sliceAt: failed", "reason", "range outside buffer", "offset", offset, "length", length, "size", size)
 	return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 }
