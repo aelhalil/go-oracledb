@@ -199,22 +199,22 @@ func TestBufferSlicesAndCopies(t *testing.T) {
 	}
 }
 
-// TestBufferErrors verifies every buffer error code and overflow-safe range checks.
+// TestBufferErrors verifies that every buffer failure returns the expected standard library error and that range checks are overflow-safe.
 func TestBufferErrors(t *testing.T) {
 	reader := NewReadBuffer(nil, BIG_ENDIAN)
 	_, err := reader.ReadUB1()
-	assertBufferErrorCode(t, err, oracleErrors.BufferUnderflow)
+	assertBufferErrorCode(t, err)
 	_, err = reader.ReadBytes(1)
-	assertBufferErrorCode(t, err, oracleErrors.BufferUnderflow)
+	assertBufferErrorCode(t, err)
 	if err := reader.SetPosition(1); err == nil {
 		t.Fatal("SetPosition(1) error = nil")
 	} else {
-		assertBufferErrorCode(t, err, oracleErrors.BufferInvalidPosition)
+		assertBufferErrorCode(t, err)
 	}
 	if _, err := reader.ReadBytesAt(math.MaxUint, 1); err == nil {
 		t.Fatal("ReadBytesAt(max, 1) error = nil")
 	} else {
-		assertBufferErrorCode(t, err, oracleErrors.BufferInvalidRange)
+		assertBufferErrorCode(t, err)
 	}
 	if _, err := reader.ReadBytesAt(0, 0); err != nil {
 		t.Fatalf("ReadBytesAt(0, 0) error = %v", err)
@@ -224,7 +224,7 @@ func TestBufferErrors(t *testing.T) {
 		func() error { _, err := reader.ReadUB4(); return err },
 		func() error { _, err := reader.ReadUB8(); return err },
 	} {
-		assertBufferErrorCode(t, read(), oracleErrors.BufferUnderflow)
+		assertBufferErrorCode(t, read())
 	}
 	for _, read := range []func() error{
 		func() error { _, err := reader.ReadUB1At(0); return err },
@@ -235,7 +235,7 @@ func TestBufferErrors(t *testing.T) {
 		func() error { _, err := reader.ReadSB2At(0); return err },
 		func() error { _, err := reader.ReadSB4At(0); return err },
 	} {
-		assertBufferErrorCode(t, read(), oracleErrors.BufferInvalidRange)
+		assertBufferErrorCode(t, read())
 	}
 
 	writer := NewWriteBuffer(BIG_ENDIAN)
@@ -243,12 +243,12 @@ func TestBufferErrors(t *testing.T) {
 	if err := writer.WriteUB2At(0, 2); err == nil {
 		t.Fatal("WriteUB2At() error = nil")
 	} else {
-		assertBufferErrorCode(t, err, oracleErrors.BufferInvalidRange)
+		assertBufferErrorCode(t, err)
 	}
 	if err := writer.WriteUB1At(math.MaxUint, 2); err == nil {
 		t.Fatal("WriteUB1At(max) error = nil")
 	} else {
-		assertBufferErrorCode(t, err, oracleErrors.BufferInvalidRange)
+		assertBufferErrorCode(t, err)
 	}
 	for _, write := range []func() error{
 		func() error { return writer.WriteUB4At(0, 0) },
@@ -258,15 +258,15 @@ func TestBufferErrors(t *testing.T) {
 		func() error { return writer.WriteSB4At(0, 0) },
 		func() error { return writer.WriteBytesAt(1, B1Array{0}) },
 	} {
-		assertBufferErrorCode(t, write(), oracleErrors.BufferInvalidRange)
+		assertBufferErrorCode(t, write())
 	}
 }
 
-// assertBufferErrorCode verifies that err has the expected driver error code.
-func assertBufferErrorCode(t *testing.T, err error, want oracleErrors.ErrorCode) {
+// assertBufferErrorCode verifies that err has the InvalidBufferOperation driver code.
+func assertBufferErrorCode(t *testing.T, err error) {
 	t.Helper()
 	var sqlErr oracleErrors.SQLError
-	if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(want) {
-		t.Fatalf("error = %v, want code %s", err, want)
+	if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.InvalidBufferOperation) {
+		t.Fatalf("error = %v, want code %s", err, oracleErrors.InvalidBufferOperation)
 	}
 }

@@ -72,49 +72,49 @@ type ReadBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidPosition when the position is outside the buffer
+	//  - InvalidBufferOperation when the position is outside the buffer
 	SetPosition(position uint) error
 	// ReadUB1 Reads an unsigned byte
 	// Returns:
 	//  - The unsigned byte
 	// Errors:
-	//  - BufferUnderflow when no byte remains to read
+	//  - InvalidBufferOperation when no byte remains to read
 	ReadUB1() (UB1, error)
 	// ReadUB2 Reads a two unsigned bytes long value
 	// Returns:
 	//  - The two unsigned bytes long value
 	// Errors:
-	//  - BufferUnderflow when fewer than two bytes remain
+	//  - InvalidBufferOperation when fewer than two bytes remain
 	ReadUB2() (UB2, error)
 	// ReadUB4 Reads a four unsigned bytes long value
 	// Returns:
 	//  - The four unsigned bytes long value
 	// Errors:
-	//  - BufferUnderflow when fewer than four bytes remain
+	//  - InvalidBufferOperation when fewer than four bytes remain
 	ReadUB4() (UB4, error)
 	// ReadUB8 Reads an eight unsigned bytes long value
 	// Returns:
 	//  - The eight unsigned bytes long value
 	// Errors:
-	//  - BufferUnderflow when fewer than eight bytes remain
+	//  - InvalidBufferOperation when fewer than eight bytes remain
 	ReadUB8() (UB8, error)
 	// ReadSB1 Reads a signed byte
 	// Returns:
 	//  - The signed byte
 	// Errors:
-	//  - BufferUnderflow when no byte remains to read
+	//  - InvalidBufferOperation when no byte remains to read
 	ReadSB1() (SB1, error)
 	// ReadSB2 Reads a two signed bytes long value
 	// Returns:
 	//  - The two signed bytes long value
 	// Errors:
-	//  - BufferUnderflow when fewer than two bytes remain
+	//  - InvalidBufferOperation when fewer than two bytes remain
 	ReadSB2() (SB2, error)
 	// ReadSB4 Reads a four signed bytes long value
 	// Returns:
 	//  - The four signed bytes long value
 	// Errors:
-	//  - BufferUnderflow when fewer than four bytes remain
+	//  - InvalidBufferOperation when fewer than four bytes remain
 	ReadSB4() (SB4, error)
 	// ReadBytes Reads a sequence of bytes and advances the cursor
 	// Parameters:
@@ -122,7 +122,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - A view aliasing the buffer's data
 	// Errors:
-	//  - BufferUnderflow when fewer bytes remain than requested
+	//  - InvalidBufferOperation when fewer bytes remain than requested
 	ReadBytes(length uint) (B1Array, error)
 	// ReadUB1At Reads an unsigned byte at an absolute offset
 	// Parameters:
@@ -130,7 +130,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - The unsigned byte
 	// Errors:
-	//  - BufferInvalidRange when the offset is outside the buffer
+	//  - InvalidBufferOperation when the offset is outside the buffer
 	ReadUB1At(offset uint) (UB1, error)
 	// ReadUB2At Reads a two unsigned bytes long value at an absolute offset
 	// Parameters:
@@ -138,7 +138,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - The two unsigned bytes long value
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the buffer
+	//  - InvalidBufferOperation when the value range extends past the end of the buffer
 	ReadUB2At(offset uint) (UB2, error)
 	// ReadUB4At Reads a four unsigned bytes long value at an absolute offset
 	// Parameters:
@@ -146,7 +146,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - The four unsigned bytes long value
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the buffer
+	//  - InvalidBufferOperation when the value range extends past the end of the buffer
 	ReadUB4At(offset uint) (UB4, error)
 	// ReadUB8At Reads an eight unsigned bytes long value at an absolute offset
 	// Parameters:
@@ -154,7 +154,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - The eight unsigned bytes long value
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the buffer
+	//  - InvalidBufferOperation when the value range extends past the end of the buffer
 	ReadUB8At(offset uint) (UB8, error)
 	// ReadSB1At Reads a signed byte at an absolute offset
 	// Parameters:
@@ -162,7 +162,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - The signed byte
 	// Errors:
-	//  - BufferInvalidRange when the offset is outside the buffer
+	//  - InvalidBufferOperation when the offset is outside the buffer
 	ReadSB1At(offset uint) (SB1, error)
 	// ReadSB2At Reads a two signed bytes long value at an absolute offset
 	// Parameters:
@@ -170,7 +170,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - The two signed bytes long value
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the buffer
+	//  - InvalidBufferOperation when the value range extends past the end of the buffer
 	ReadSB2At(offset uint) (SB2, error)
 	// ReadSB4At Reads a four signed bytes long value at an absolute offset
 	// Parameters:
@@ -178,7 +178,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - The four signed bytes long value
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the buffer
+	//  - InvalidBufferOperation when the value range extends past the end of the buffer
 	ReadSB4At(offset uint) (SB4, error)
 	// ReadBytesAt Reads a sequence of bytes at an absolute offset
 	// Parameters:
@@ -187,7 +187,7 @@ type ReadBuffer interface {
 	// Returns:
 	//  - A view aliasing the buffer's data
 	// Errors:
-	//  - BufferInvalidRange when the range is outside the buffer
+	//  - InvalidBufferOperation when the range extends past the end of the buffer
 	ReadBytesAt(offset, length uint) (B1Array, error)
 }
 
@@ -279,7 +279,7 @@ type WriteBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidRange when the offset is outside the bytes written so far
+	//  - InvalidBufferOperation when the offset is outside the bytes written so far
 	WriteUB1At(offset uint, value UB1) error
 	// WriteUB2At Overwrites a two unsigned bytes long value at an absolute offset
 	// Parameters:
@@ -287,7 +287,7 @@ type WriteBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the bytes written so far
+	//  - InvalidBufferOperation when the value range is outside the bytes written so far
 	WriteUB2At(offset uint, value UB2) error
 	// WriteUB4At Overwrites a four unsigned bytes long value at an absolute offset
 	// Parameters:
@@ -295,7 +295,7 @@ type WriteBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the bytes written so far
+	//  - InvalidBufferOperation when the value range is outside the bytes written so far
 	WriteUB4At(offset uint, value UB4) error
 	// WriteUB8At Overwrites an eight unsigned bytes long value at an absolute offset
 	// Parameters:
@@ -303,7 +303,7 @@ type WriteBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the bytes written so far
+	//  - InvalidBufferOperation when the value range is outside the bytes written so far
 	WriteUB8At(offset uint, value UB8) error
 	// WriteSB1At Overwrites a signed byte at an absolute offset
 	// Parameters:
@@ -311,7 +311,7 @@ type WriteBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidRange when the offset is outside the bytes written so far
+	//  - InvalidBufferOperation when the offset is outside the bytes written so far
 	WriteSB1At(offset uint, value SB1) error
 	// WriteSB2At Overwrites a two signed bytes long value at an absolute offset
 	// Parameters:
@@ -319,7 +319,7 @@ type WriteBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the bytes written so far
+	//  - InvalidBufferOperation when the value range is outside the bytes written so far
 	WriteSB2At(offset uint, value SB2) error
 	// WriteSB4At Overwrites a four signed bytes long value at an absolute offset
 	// Parameters:
@@ -327,7 +327,7 @@ type WriteBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidRange when the value range is outside the bytes written so far
+	//  - InvalidBufferOperation when the value range is outside the bytes written so far
 	WriteSB4At(offset uint, value SB4) error
 	// WriteBytesAt Overwrites a sequence of bytes at an absolute offset
 	// Parameters:
@@ -336,7 +336,7 @@ type WriteBuffer interface {
 	// Returns:
 	//  - None.
 	// Errors:
-	//  - BufferInvalidRange when the range is outside the bytes written so far
+	//  - InvalidBufferOperation when the range is outside the bytes written so far
 	WriteBytesAt(offset uint, value B1Array) error
 	// Bytes Returns an independent copy of the bytes written so far
 	// Returns:
@@ -408,8 +408,8 @@ func (b *readBuffer) SetPosition(position uint) error {
 		b.pos = position
 		return nil
 	}
-	common.Odl.Debug("readBuffer.SetPosition: failed", "reason", "position outside buffer", "position", position, "size", b.Size())
-	return common.NewOracleError(oracleErrors.BufferInvalidPosition, nil, position, b.Size())
+	common.Odl.Finest("readBuffer.SetPosition: failed", "reason", "position outside buffer", "position", position, "size", b.Size())
+	return common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 }
 
 // ReadUB1 reads one unsigned byte.
@@ -535,8 +535,8 @@ func (b *readBuffer) ReadBytesAt(offset, length uint) (B1Array, error) {
 func (b *readBuffer) read(length uint) (B1Array, error) {
 	remaining := b.Size() - b.pos
 	if length > remaining {
-		common.Odl.Debug("readBuffer.read: failed", "reason", "buffer underflow", "position", b.pos, "length", length, "remaining", remaining, "size", b.Size())
-		return nil, common.NewOracleError(oracleErrors.BufferUnderflow, nil, length, b.pos, remaining)
+		common.Odl.Finest("readBuffer.read: failed", "reason", "buffer underflow", "position", b.pos, "length", length, "remaining", remaining, "size", b.Size())
+		return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
 	start := b.pos
 	b.pos += length
@@ -544,13 +544,18 @@ func (b *readBuffer) read(length uint) (B1Array, error) {
 }
 
 // readAt returns length bytes at offset without moving the cursor, or fails
-// when the range falls outside the buffer. The bounds comparison is arranged
-// so that arithmetic cannot overflow even for hostile offsets.
+// when the offset is outside the buffer or the range extends past its end.
+// The bounds comparison is arranged so that arithmetic cannot overflow even
+// for hostile offsets.
 func (b *readBuffer) readAt(offset, length uint) (B1Array, error) {
 	size := b.Size()
-	if offset > size || length > size-offset {
-		common.Odl.Debug("readBuffer.readAt: failed", "reason", "range outside buffer", "offset", offset, "length", length, "size", size)
-		return nil, common.NewOracleError(oracleErrors.BufferInvalidRange, nil, offset, length, size)
+	if offset > size {
+		common.Odl.Finest("readBuffer.readAt: failed", "reason", "offset outside buffer", "offset", offset, "size", size)
+		return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
+	}
+	if length > size-offset {
+		common.Odl.Finest("readBuffer.readAt: failed", "reason", "range extends past end of buffer", "offset", offset, "length", length, "size", size)
+		return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
 	return b.data[int(offset):int(offset+length)], nil
 }
@@ -702,6 +707,6 @@ func (b *writeBuffer) writeAt(offset, length uint) (B1Array, error) {
 	if offset <= size && length <= size-offset {
 		return b.data[int(offset):int(offset+length)], nil
 	}
-	common.Odl.Debug("writeBuffer.writeAt: failed", "reason", "range outside buffer", "offset", offset, "length", length, "size", size)
-	return nil, common.NewOracleError(oracleErrors.BufferInvalidRange, nil, offset, length, size)
+	common.Odl.Finest("writeBuffer.writeAt: failed", "reason", "range outside buffer", "offset", offset, "length", length, "size", size)
+	return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 }

@@ -241,12 +241,8 @@ const (
 	// the wanted provider type
 	ProviderNotFound ErrorCode = "OGD-00206"
 
-	// BufferInvalidPosition indicates a buffer cursor is outside its valid range.
-	BufferInvalidPosition ErrorCode = "OGD-00500"
-	// BufferUnderflow indicates a buffer read requires more bytes than remain.
-	BufferUnderflow ErrorCode = "OGD-00501"
-	// BufferInvalidRange indicates an absolute buffer range is outside the buffer.
-	BufferInvalidRange ErrorCode = "OGD-00502"
+	// InvalidBufferOperation indicates an invalid read or write on an internal driver buffer.
+	InvalidBufferOperation ErrorCode = "OGD-00500"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error
