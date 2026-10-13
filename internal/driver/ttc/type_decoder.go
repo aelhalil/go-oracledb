@@ -500,7 +500,7 @@ Returns:
 Errors:
   - None
 */
-func DecodeJson(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeJSON(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	return []byte(data), nil
 }
 
