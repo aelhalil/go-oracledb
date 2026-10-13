@@ -102,13 +102,14 @@ type OracleConnectionProperties struct {
 	// WalletLocation sets the directory containing Oracle wallets.
 	WalletLocation string `ns_name:"wallet_location" default:"" help:"sets the directory containing the Oracle wallets"`
 
-	// HttpsProxy sets the HTTP proxy hostname or IP address used to tunnel TLS
-	// client connections.
-	HttpsProxy string `ns_name:"https_proxy" default:"" help:"sets an HTTP proxy hostname or IP address for tunneling TLS client connections"`
+	// HttpsProxy sets an unauthenticated HTTP CONNECT proxy hostname or IP
+	// address used to tunnel TCPS client connections. Proxy authentication and
+	// the Proxy-Authorization header are not supported.
+	HttpsProxy string `ns_name:"https_proxy" default:"" help:"sets an unauthenticated HTTP CONNECT proxy hostname or IP address for tunneling TCPS client connections"`
 
-	// HttpsProxyPort sets the HTTP proxy port used to tunnel TLS client
-	// connections.
-	HttpsProxyPort int `ns_name:"https_proxy_port" default:"8080" help:"sets an HTTP proxy host port for tunneling TLS client connections"`
+	// HttpsProxyPort sets the HTTP CONNECT proxy port used to tunnel TCPS
+	// client connections.
+	HttpsProxyPort int `ns_name:"https_proxy_port" default:"80" help:"sets an HTTP CONNECT proxy port for tunneling TCPS client connections"`
 
 	// ConnectTimeout sets the timeout, in seconds, for establishing an Oracle
 	// Net connection.
@@ -1064,6 +1065,12 @@ func validateUserName(value reflect.Value, valueName string) (any, error) {
 func validateLoggingLevel(value reflect.Value, valueName string) (any, error) {
 	if value.Kind() == reflect.String {
 		if len(value.String()) != 0 {
+			switch strings.ToUpper(value.String()) {
+			case "FINEST":
+				return slog.Level(-16).String(), nil
+			case "FINE":
+				return slog.Level(-8).String(), nil
+			}
 			var l slog.Level
 			if err := l.UnmarshalText([]byte(value.String())); err == nil {
 				return l.String(), nil

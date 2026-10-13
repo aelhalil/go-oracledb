@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -59,7 +58,7 @@ type tTIuds20 struct {
 
 // newTTIuds20 returns a new TTIuds20 struct
 func newTTIuds20() driverCommon.UnMarshallable {
-	common.Odl.Debug("Instantiating TTIuds20 with new TTIuds17")
+	common.Odl.Finest("Instantiating TTIuds20 with new TTIuds17")
 	return &tTIuds20{
 		tTIuds17: newTTIuds17().(*tTIuds17),
 	}
@@ -126,8 +125,8 @@ func (p *tTIuds20) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 			p.annotations[key] = value
 		}
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("TTIuds20: fully unmarshalled", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("TTIuds20: fully unmarshalled", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }

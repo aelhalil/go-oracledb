@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -69,7 +68,7 @@ func newTTIuds24() driverCommon.UnMarshallable {
 // UnMarshalFrom extracts column/type metadata from the network buffer into the TTIuds struct.
 // It populates vector properties.
 func (p *tTIuds24) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIuds24: UnMarshalFrom start")
+	common.Odl.Finest("TTIuds24: UnMarshalFrom start")
 	var err error
 	if err = p.tTIuds20.UnMarshalFrom(ctx, mar); err != nil {
 		common.Odl.Warn("TTIuds20.UnMarshalFrom: failed to unmarshal", "error", err)
@@ -90,8 +89,8 @@ func (p *tTIuds24) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		common.Odl.Warn("TTIuds24.UnMarshalFrom: failed to unmarshal vectorFlag", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("TTIuds24: fully unmarshalled", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("TTIuds24: fully unmarshalled", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }

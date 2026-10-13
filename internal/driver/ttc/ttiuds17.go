@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -67,7 +66,7 @@ func newTTIuds17() driverCommon.UnMarshallable {
 
 // UnMarshalFrom extracts column/type metadata and domain info from the network buffer
 func (p *tTIuds17) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIuds17: UnMarshalFrom start")
+	common.Odl.Finest("TTIuds17: UnMarshalFrom start")
 	var err error
 	if err = p.tTIuds.UnMarshalFrom(ctx, mar); err != nil {
 		common.Odl.Warn("TTIuds.UnMarshalFrom: failed to unmarshal", "error", err)
@@ -88,8 +87,8 @@ func (p *tTIuds17) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	}
 	p.domainName = domainName.value
 
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("TTIuds17: fully unmarshalled", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("TTIuds17: fully unmarshalled", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }

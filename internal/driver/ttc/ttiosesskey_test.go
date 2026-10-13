@@ -334,7 +334,6 @@ func TestOSesskeyRPAUnMarshalFrom_Fail(t *testing.T) {
 			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			unmarshallable, _ := rpa.(common.UnMarshallable)
 
-			// zsession.PrintPacket(tc.payload, 0, len(tc.payload))
 			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
 			if tc.name == "Invalid VGEN_COUNT_1" || tc.name == "Invalid SDER_COUNT_2" {
 				return

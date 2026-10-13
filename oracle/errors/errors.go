@@ -130,6 +130,10 @@ const (
 	NamingInputMissing                   ErrorCode = "OGD-00126"
 	NamingTokensMissing                  ErrorCode = "OGD-00127"
 	NamingUnexpectedClosingParenthesis   ErrorCode = "OGD-00128"
+	// HTTPSProxyRequiresTCPS indicates that proxy tunneling was requested for a non-TLS connection.
+	HTTPSProxyRequiresTCPS ErrorCode = "OGD-00129"
+	// HTTPSProxyConnectFailed indicates that the proxy rejected or could not establish a CONNECT tunnel.
+	HTTPSProxyConnectFailed ErrorCode = "OGD-00130"
 	// NetworkCompressionFailed indicates that a network packet could not be compressed.
 	NetworkCompressionFailed ErrorCode = "OGD-00068"
 	// NetworkDecompressionFailed indicates that a compressed network packet could not be decompressed.

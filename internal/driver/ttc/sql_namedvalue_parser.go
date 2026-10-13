@@ -40,7 +40,6 @@ package ttc
 
 import (
 	"database/sql/driver"
-	"log/slog"
 	"math"
 	"unicode"
 
@@ -138,8 +137,8 @@ func parsePlaceholders(sql string) (*bindDetails, error) {
 			i = j - 1
 		}
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("parsePlaceholders: placeholders parsed:", "binds", binds, "bindMap", occ)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("parsePlaceholders: placeholders parsed:", "binds", binds, "bindMap", occ)
 	}
 	return &bindDetails{bindNames: binds, bindMap: occ, uniqueNames: uniqueNames}, nil
 }
@@ -295,8 +294,8 @@ func extractInputBindValues(bindDetails *bindDetails, in []driver.NamedValue) ([
 			currentPosition++
 		}
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
 	}
 	return filledPlaceholders, nil
 }
@@ -360,6 +359,6 @@ func extractInputBindValuesForPlSql(bindDetails *bindDetails, in []driver.NamedV
 		}
 	}
 
-	common.Odl.Debug("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
+	common.Odl.Finest("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
 	return filledPlaceholders, nil
 }

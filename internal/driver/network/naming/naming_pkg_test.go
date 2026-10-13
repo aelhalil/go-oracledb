@@ -72,6 +72,8 @@ var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNewConnectionIterator_Basic", Categories: "unitary", Exclusive: false, Fn: TestNewConnectionIterator_Basic},
+	{Name: "TestConnectionIterator_BuildConnectStringWithHTTPSProxy", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_BuildConnectStringWithHTTPSProxy},
+	{Name: "TestConnectionIterator_BuildDescriptionWithAddressHTTPSProxy", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_BuildDescriptionWithAddressHTTPSProxy},
 	{Name: "TestNewConnectionIterator_PrioritizesUncachedHosts", Categories: "unitary", Exclusive: false, Fn: TestNewConnectionIterator_PrioritizesUncachedHosts},
 	{Name: "TestConnectionIterator_UsesResolvedIPForDownHostCache", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_UsesResolvedIPForDownHostCache},
 	{Name: "TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts},
@@ -191,6 +193,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParseEzConnect_QuotedParamValue", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_QuotedParamValue},
 	{Name: "TestParseEzConnect_ParameterAliases", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_ParameterAliases},
 	{Name: "TestParseEzConnect_HTTPSProxy", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_HTTPSProxy},
+	{Name: "TestParseEzConnect_HTTPSProxyPortBounds", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_HTTPSProxyPortBounds},
 	{Name: "TestParseEzConnect_IPv6Address", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_IPv6Address},
 	{Name: "TestParseEzConnect_IPv6WithMultipleHosts", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_IPv6WithMultipleHosts},
 	{Name: "TestParseEzConnect_EmptyServiceVariants", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_EmptyServiceVariants},
