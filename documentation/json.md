@@ -326,7 +326,7 @@ returns a sentinel instead of JSON text:
 Rendering a container fails as a whole if any child in that subtree cannot be
 rendered. Use `json.Marshal` when the error matters.
 
-### OSON scalars not supported yet
+### Unsupported scalar types
 
 The driver decodes the JSON scalars (null, boolean, string, numbers including
 Oracle NUMBER, Decimal128, `BINARY_FLOAT`, and `BINARY_DOUBLE`) and the
@@ -339,7 +339,6 @@ affected subtree with `String()` returns `"<JSON: rendering failed>"`:
 
 - Native integer
 - Extended binary values: vectors, scalar arrays, and embedded OSON
-- Reserved or unknown scalar formats are rejected as malformed
 
 ### Types not supported for binding
 
