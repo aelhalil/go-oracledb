@@ -97,7 +97,9 @@ func (scalar *scalarNode) Kind() drvCommon.Kind {
 // Errors:
 //   - none; Value validates the scalar opcode and payload.
 func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drvCommon.UB1) *scalarNode {
-	common.Odl.Debug("newScalarNodeAt: parsed", "offset", offset, "opcode", opcode)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("newScalarNodeAt: parsed", "offset", offset, "opcode", opcode)
+	}
 	return &scalarNode{
 		nodeBase: nodeBase{
 			buf:    buf,
@@ -138,7 +140,9 @@ func (scalar *scalarNode) String() (string, error) {
 		common.Odl.Debug("scalarNode.String: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
-	common.Odl.Debug("scalarNode.String: completed", "offset", scalar.offset, "opcode", scalar.opcode, "textBytes", len(text))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("scalarNode.String: completed", "offset", scalar.offset, "opcode", scalar.opcode, "textBytes", len(text))
+	}
 	return string(text), nil
 }
 
@@ -185,14 +189,15 @@ func (scalar *scalarNode) MarshalJSON() ([]byte, error) {
 // Errors:
 //   - unsupported scalar opcode or payload decode failure.
 func (scalar *scalarNode) Value(opts drvCommon.JSONConversionOptions) (any, error) {
-	common.Odl.Debug("scalarNode.Value: begin", "offset", scalar.offset, "opcode", scalar.opcode, "options", opts)
 	value, err := _decodeScalarValue(scalar, opts)
 	if err != nil {
 		common.Odl.Debug("scalarNode.Value: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
 		return nil, err
 	}
 
-	common.Odl.Debug("scalarNode.Value: completed", "offset", scalar.offset, "opcode", scalar.opcode, "options", opts)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("scalarNode.Value: completed", "offset", scalar.offset, "opcode", scalar.opcode, "options", opts)
+	}
 	return value, nil
 }
 
@@ -232,10 +237,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: short string",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: short string",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return converters.DecodeVarchar(raw)
 
 	// Compact signed32 stores the payload width in the opcode.
@@ -252,10 +259,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: compact signed32",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: compact signed32",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return decodeSignedIntegerValue[int32](raw, opts)
 
 	// Compact signed64 stores the payload width in the opcode.
@@ -273,10 +282,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: compact signed64",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: compact signed64",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return decodeSignedIntegerValue[int64](raw, opts)
 
 	// Compact NUMBER stores the payload width in the opcode.
@@ -286,10 +297,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: compact oracle number",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: compact oracle number",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return decodeOracleNumberValue(raw, opts)
 
 	// Compact decimal stores the payload width in the opcode.
@@ -299,10 +312,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: compact decimal number",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: compact decimal number",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return decodeOracleNumberValue(raw, opts)
 
 	// String UB1 uses a 1-byte length prefix.
@@ -315,10 +330,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: string ub1",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: string ub1",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return converters.DecodeVarchar(raw)
 
 	// String UB2 uses a 2-byte length prefix.
@@ -331,10 +348,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: string ub2",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: string ub2",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return converters.DecodeVarchar(raw)
 
 	// String UB4 uses a 4-byte length prefix.
@@ -347,10 +366,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: string ub4",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: string ub4",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return converters.DecodeVarchar(raw)
 
 	// Oracle NUMBER and DECIMAL use a 1-byte length prefix.
@@ -363,10 +384,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: explicit oracle number",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: explicit oracle number",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return decodeOracleNumberValue(raw, opts)
 
 	// String number stores decimal text bytes.
@@ -379,10 +402,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: string number",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: string number",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return decodeStringNumberValue(raw, opts)
 
 	// Binary float uses a fixed 4-byte payload.
@@ -391,10 +416,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: binary float",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: binary float",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		value, err := converters.DecodeBinaryFloat(raw)
 		if err != nil {
 			return nil, err
@@ -411,10 +438,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: binary double",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: binary double",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		value, err := converters.DecodeBinaryDouble(raw)
 		if err != nil {
 			return nil, err
@@ -430,10 +459,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: date",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: date",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return converters.DecodeDate(raw)
 
 	// TIMESTAMP and TIMESTAMP7 share a decoder with different widths.
@@ -446,10 +477,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: timestamp",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: timestamp",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return converters.DecodeTimestamp(raw)
 
 	// TIMESTAMP WITH TIME ZONE uses a fixed payload.
@@ -458,10 +491,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: timestamp tz",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: timestamp tz",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return decodeTimestampTZ(raw)
 
 	// INTERVAL YEAR TO MONTH uses a fixed payload.
@@ -470,10 +505,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: interval ym",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: interval ym",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return converters.DecodeIntervalYearToMonth(raw)
 
 	// INTERVAL DAY TO SECOND uses a fixed payload.
@@ -482,10 +519,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: interval ds",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: interval ds",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return converters.DecodeIntervalDayToSecond(raw)
 
 	// ID uses a UB1 length with a bounded payload.
@@ -498,10 +537,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: id",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: id",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return append([]byte(nil), raw...), nil
 
 	// Binary UB2 uses a 2-byte length prefix.
@@ -514,10 +555,12 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: binary ub2",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: binary ub2",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return append([]byte(nil), raw...), nil
 
 	// Binary UB4 uses a 4-byte length prefix.
@@ -531,14 +574,18 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
-		common.Odl.Debug("decodeScalarValue: binary ub4",
-			"offset", offset,
-			"opcode", opcode,
-			"payloadLen", len(raw))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: binary ub4",
+				"offset", offset,
+				"opcode", opcode,
+				"payloadLen", len(raw))
+		}
 		return append([]byte(nil), raw...), nil
 
 	case opcode == osonOpNativeInteger || opcode == osonOpExtendedBinary:
-		common.Odl.Debug("decodeScalarValue: unsupported scalar", "offset", offset, "opcode", opcode)
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("decodeScalarValue: unsupported scalar", "offset", offset, "opcode", opcode)
+		}
 		return nil, common.NewOracleError(oracleErrors.OsonUnsupportedScalarError, nil, opcode)
 
 	default:
@@ -581,7 +628,7 @@ func decodeOracleNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONConve
 	value, err := strconv.ParseFloat(text, _jsonFloatBitSize)
 	if err != nil {
 		common.Odl.Debug("decodeOracleNumberValue: failed", "reason", "invalid Oracle NUMBER text", "length", len(text))
-		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+		return nil, common.NewOracleError(oracleErrors.InternalError, err)
 	}
 	return value, nil
 }
@@ -595,7 +642,7 @@ func decodeStringNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONConve
 	value, err := strconv.ParseFloat(text, _jsonFloatBitSize)
 	if err != nil {
 		common.Odl.Debug("decodeStringNumberValue: failed", "reason", "invalid string NUMBER text", "length", len(text))
-		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+		return nil, common.NewOracleError(oracleErrors.InternalError, err)
 	}
 	return value, nil
 }

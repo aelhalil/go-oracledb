@@ -60,12 +60,11 @@ import (
 // Errors:
 //   - malformed header, dictionary, or root node.
 func Parse(data drvCommon.B1Array) (drvCommon.JSONNode, error) {
-	common.Odl.Debug("oson.Parse: begin", "documentBytes", len(data))
 
 	buf := newOsonBuffer(data)
 	header, err := newOsonHeader(buf)
 	if err != nil {
-		common.Odl.Debug("oson.Parse: failed", "error", err, "stage", "header", "documentBytes", len(data))
+		common.Odl.Debug("oson.Parse: failed", "error", err, "documentBytes", len(data))
 		return nil, err
 	}
 
@@ -73,7 +72,6 @@ func Parse(data drvCommon.B1Array) (drvCommon.JSONNode, error) {
 	if err != nil {
 		common.Odl.Debug("oson.Parse: failed",
 			"error", err,
-			"stage", "root-node",
 			"documentBytes", len(data),
 			"version", header.formatVersion,
 			"flags", header.flags,
@@ -82,15 +80,17 @@ func Parse(data drvCommon.B1Array) (drvCommon.JSONNode, error) {
 		return nil, err
 	}
 
-	common.Odl.Debug("oson.Parse: completed",
-		"documentBytes", len(data),
-		"version", header.formatVersion,
-		"flags", header.flags,
-		"primaryFields", header.primaryFieldsCount,
-		"secondaryFields", len(header.fieldDictionary.fieldNames)-header.primaryFieldsCount,
-		"treeOffset", header.treeSegmentStartOffset,
-		"treeBytes", header.treeSegmentByteLength,
-		"rootKind", node.Kind())
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFine) {
+		common.Odl.Fine("oson.Parse: completed",
+			"documentBytes", len(data),
+			"version", header.formatVersion,
+			"flags", header.flags,
+			"primaryFields", header.primaryFieldsCount,
+			"secondaryFields", len(header.fieldDictionary.fieldNames)-header.primaryFieldsCount,
+			"treeOffset", header.treeSegmentStartOffset,
+			"treeBytes", header.treeSegmentByteLength,
+			"rootKind", node.Kind())
+	}
 	return node, nil
 }
 
@@ -205,18 +205,22 @@ func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONN
 		if !redirected {
 			break
 		}
-		common.Odl.Debug("newNodeAt: redirect",
-			"fromOffset", resolvedOffset,
-			"toOffset", nextOffset,
-			"opcode", opcode)
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("newNodeAt: redirect",
+				"fromOffset", resolvedOffset,
+				"toOffset", nextOffset,
+				"opcode", opcode)
+		}
 		resolvedOffset = nextOffset
 	}
 
-	common.Odl.Debug("newNodeAt: dispatch",
-		"requestedOffset", offset,
-		"resolvedOffset", resolvedOffset,
-		"redirects", len(seen)-1,
-		"opcode", opcode)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("newNodeAt: dispatch",
+			"requestedOffset", offset,
+			"resolvedOffset", resolvedOffset,
+			"redirects", len(seen)-1,
+			"opcode", opcode)
+	}
 	switch {
 	case isObjectOpcode(opcode):
 		return newObjectNodeAt(buf, header, resolvedOffset, opcode)

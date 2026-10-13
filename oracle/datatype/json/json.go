@@ -104,20 +104,22 @@ type JSONString string
 
 // Value implements driver.Valuer.
 func (jz JSONString) Value() (driver.Value, error) {
-	common.Odl.Debug("JSONString.Value: start", "length", len(jz))
 	if !json.Valid([]byte(jz)) {
 		common.Odl.Debug("JSONString.Value: failed", "reason", "invalid JSON text", "length", len(jz))
 		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, nil)
 	}
-	common.Odl.Debug("JSONString.Value: completed", "length", len(jz))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFine) {
+		common.Odl.Fine("JSONString.Value: completed", "length", len(jz))
+	}
 	return string(jz), nil
 }
 
 // NewJSONFromString returns value as a [JSONString] for binding. The text is
 // validated at the bind boundary by [JSONString.Value].
 func NewJSONFromString(value string) JSONString {
-	common.Odl.Debug("NewJSONFromString: start", "length", len(value))
-	common.Odl.Debug("NewJSONFromString: completed", "length", len(value))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFine) {
+		common.Odl.Fine("NewJSONFromString: completed", "length", len(value))
+	}
 	return JSONString(value)
 }
 
@@ -193,7 +195,9 @@ func (jz *JSON) UnmarshalJSON(data []byte) error {
 // replaces jz's document and preserves its options. Scan returns an error for
 // SQL NULL; use sql.Null[JSON] for nullable columns.
 func (jz *JSON) Scan(src any) error {
-	common.Odl.Debug("JSON.Scan: start", "source_type", fmt.Sprintf("%T", src))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("JSON.Scan: start", "source_type", fmt.Sprintf("%T", src))
+	}
 	switch value := src.(type) {
 	case []byte:
 		if len(value) >= 4 && oson.IsOson(value) {
@@ -207,7 +211,9 @@ func (jz *JSON) Scan(src any) error {
 			}
 			jz.node = node
 			jz.document = doc
-			common.Odl.Debug("JSON.Scan: completed", "length", len(value))
+			if common.Odl.Enabled(common.BackgroundContext, common.OlFine) {
+				common.Odl.Fine("JSON.Scan: completed", "length", len(value))
+			}
 			return nil
 		}
 		common.Odl.Debug("JSON.Scan: failed", "reason", "byte slice is not an OSON document", "length", len(value))
@@ -231,7 +237,9 @@ func (jz JSON) Value() (driver.Value, error) {
 		return append([]byte(nil), jz.document...), nil
 	}
 
-	common.Odl.Debug("JSON.Value: encoding child view", "options", drvCommon.JSONConversionOptions(jz.options))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("JSON.Value: encoding child view", "options", drvCommon.JSONConversionOptions(jz.options))
+	}
 	value, err := jz.node.GetValue(drvCommon.JSONConversionOptions(jz.options))
 	if err != nil {
 		return nil, err

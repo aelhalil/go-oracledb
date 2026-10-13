@@ -88,12 +88,12 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drv
 
 	fieldIDValues, err := readFieldIDEntriesAt(buf, header, fieldIDArrayStart, memberCount)
 	if err != nil {
-		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "count", memberCount)
+		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "members", memberCount, "fieldIDTable", fieldIDArrayStart)
 		return nil, err
 	}
 	memberOffsets, err := readChildOffsetsAt(buf, header, offset, childOffsetArrayStart, memberCount, opcode)
 	if err != nil {
-		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "count", memberCount)
+		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "members", memberCount, "childOffsetTable", childOffsetArrayStart)
 		return nil, err
 	}
 
@@ -103,20 +103,22 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drv
 		fieldName, ok := header.fieldName(fieldIDValues[i] - 1)
 		if !ok {
 			details := fmt.Sprintf("field ID %d not found", fieldIDValues[i])
-			common.Odl.Debug("newObjectNodeAt: failed", "reason", details, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
+			common.Odl.Debug("newObjectNodeAt: failed", "reason", details, "offset", offset, "member", i, "fieldID", fieldIDValues[i])
 			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		members[fieldName] = memberOffsets[i]
 	}
 
-	common.Odl.Debug("newObjectNodeAt: parsed",
-		"offset", offset,
-		"opcode", opcode,
-		"members", memberCount,
-		"fieldIDWidth", header.numFieldIDBytes(),
-		"childOffsetWidth", childOffsetSize(opcode),
-		"fieldIDTable", fieldIDArrayStart,
-		"childOffsetTable", childOffsetArrayStart)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("newObjectNodeAt: parsed",
+			"offset", offset,
+			"opcode", opcode,
+			"members", memberCount,
+			"fieldIDWidth", header.numFieldIDBytes(),
+			"childOffsetWidth", childOffsetSize(opcode),
+			"fieldIDTable", fieldIDArrayStart,
+			"childOffsetTable", childOffsetArrayStart)
+	}
 	return &objectNode{
 		nodeBase: nodeBase{
 			buf:    buf,
@@ -338,7 +340,9 @@ func (obj *objectNode) String() (string, error) {
 		common.Odl.Debug("objectNode.String: failed", "error", err, "offset", obj.offset)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
-	common.Odl.Debug("objectNode.String: completed", "offset", obj.offset, "textBytes", len(text))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("objectNode.String: completed", "offset", obj.offset, "textBytes", len(text))
+	}
 	return string(text), nil
 }
 
@@ -381,13 +385,15 @@ func (obj *objectNode) Get(key string) (drvCommon.JSONNode, bool) {
 	}
 	child, err := newNodeAt(obj.buf, obj.header, childOffset)
 	if err != nil {
-		common.Odl.Debug("objectNode.Get: failed", "error", err, "offset", obj.offset, "key", key)
+		common.Odl.Debug("objectNode.Get: failed", "error", err, "offset", obj.offset, "childOffset", childOffset)
 		return nil, false
 	}
-	common.Odl.Debug("objectNode.Get: completed",
-		"offset", obj.offset,
-		"childOffset", childOffset,
-		"childKind", child.Kind())
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("objectNode.Get: completed",
+			"offset", obj.offset,
+			"childOffset", childOffset,
+			"childKind", child.Kind())
+	}
 	return child, true
 }
 
@@ -434,21 +440,22 @@ func (obj *objectNode) Keys() []string {
 // Errors:
 //   - child node construction or value decoding failure.
 func (obj *objectNode) Value(opts drvCommon.JSONConversionOptions) (map[string]any, error) {
-	common.Odl.Debug("objectNode.Value: begin", "offset", obj.offset, "members", len(obj.childrenOffsets), "options", opts)
 	values := make(map[string]any, len(obj.childrenOffsets))
 	for fieldName, offset := range obj.childrenOffsets {
 		child, err := newNodeAt(obj.buf, obj.header, offset)
 		if err != nil {
-			common.Odl.Debug("objectNode.Value: failed", "error", err, "offset", obj.offset, "key", fieldName)
+			common.Odl.Debug("objectNode.Value: failed", "error", err, "offset", obj.offset, "childOffset", offset)
 			return nil, err
 		}
 		value, err := child.GetValue(opts)
 		if err != nil {
-			common.Odl.Debug("objectNode.Value: failed", "error", err, "offset", obj.offset, "key", fieldName)
+			common.Odl.Debug("objectNode.Value: failed", "error", err, "offset", obj.offset, "childOffset", offset)
 			return nil, err
 		}
 		values[fieldName] = value
 	}
-	common.Odl.Debug("objectNode.Value: completed", "offset", obj.offset, "members", len(values), "options", opts)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("objectNode.Value: completed", "offset", obj.offset, "members", len(values), "options", opts)
+	}
 	return values, nil
 }

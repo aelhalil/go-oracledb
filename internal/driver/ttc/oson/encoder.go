@@ -75,30 +75,30 @@ func Encode(value any) (drvCommon.B1Array, error) {
 
 // EncodeWithOptions converts a supported Go value to OSON using opts.
 func EncodeWithOptions(value any, opts drvCommon.JSONConversionOptions) (drvCommon.B1Array, error) {
-	inputType := fmt.Sprintf("%T", value)
-	common.Odl.Debug("oson.Encode: begin", "inputType", inputType)
 
 	enc := newOsonEncoder()
 	enc.options = opts
 	doc, err := enc.encode(value)
 	if err != nil {
-		common.Odl.Debug("oson.Encode: failed", "error", err, "inputType", inputType)
+		common.Odl.Debug("oson.Encode: failed", "error", err, "inputType", fmt.Sprintf("%T", value))
 		return nil, err
 	}
 	if len(doc) > osonMaxDocumentSize {
 		details := fmt.Sprintf("OSON document size %d exceeds maximum size %d bytes", len(doc), osonMaxDocumentSize)
-		common.Odl.Debug("oson.Encode: failed", "reason", details, "inputType", inputType, "documentBytes", len(doc))
+		common.Odl.Debug("oson.Encode: failed", "reason", details, "inputType", fmt.Sprintf("%T", value), "documentBytes", len(doc))
 		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, nil)
 	}
 
-	common.Odl.Debug("oson.Encode: completed",
-		"inputType", inputType,
-		"documentBytes", len(doc),
-		"version", enc.version,
-		"flags", enc.flags,
-		"primaryFields", len(enc.dict.primary),
-		"secondaryFields", len(enc.dict.secondary),
-		"treeBytes", len(enc.treeSegmentBytes))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFine) {
+		common.Odl.Fine("oson.Encode: completed",
+			"inputType", fmt.Sprintf("%T", value),
+			"documentBytes", len(doc),
+			"version", enc.version,
+			"flags", enc.flags,
+			"primaryFields", len(enc.dict.primary),
+			"secondaryFields", len(enc.dict.secondary),
+			"treeBytes", len(enc.treeSegmentBytes))
+	}
 	return doc, nil
 }
 
@@ -169,10 +169,12 @@ func newOsonEncoder() *osonEncoder {
 func (enc *osonEncoder) encode(value any) (drvCommon.B1Array, error) {
 	kind, err := classifyJSONValue(value)
 	if err != nil {
-		common.Odl.Debug("osonEncoder.encode: failed", "error", err)
+		common.Odl.Debug("osonEncoder.encode: failed", "error", err, "goType", fmt.Sprintf("%T", value))
 		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
-	common.Odl.Debug("osonEncoder.encode: classified", "kind", kind)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.encode: classified", "kind", kind)
+	}
 	switch kind {
 	case drvCommon.KindScalar:
 		return enc.encodeScalarDocument(value)
@@ -192,12 +194,14 @@ func (enc *osonEncoder) encodeScalarDocument(value any) (drvCommon.B1Array, erro
 	enc.prepareScalarHeader()
 
 	doc := enc.generateScalarDocument()
-	common.Odl.Debug("osonEncoder.encodeScalarDocument: completed",
-		"opcode", enc.treeSegmentBytes[0],
-		"treeBytes", len(enc.treeSegmentBytes),
-		"version", enc.version,
-		"flags", enc.flags,
-		"documentBytes", len(doc))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFine) {
+		common.Odl.Fine("osonEncoder.encodeScalarDocument: completed",
+			"opcode", enc.treeSegmentBytes[0],
+			"treeBytes", len(enc.treeSegmentBytes),
+			"version", enc.version,
+			"flags", enc.flags,
+			"documentBytes", len(doc))
+	}
 	return doc, nil
 }
 
@@ -227,26 +231,26 @@ func (enc *osonEncoder) generateScalarDocument() drvCommon.B1Array {
 // encodeContainer converts a supported object or array into an OSON document.
 func (enc *osonEncoder) encodeContainer(value any) (drvCommon.B1Array, error) {
 	if err := enc.prepareDictionary(value); err != nil {
-		common.Odl.Debug("osonEncoder.encodeContainer: failed", "error", err, "stage", "dictionary")
 		return nil, err
 	}
 	if err := enc.prepareTreeSegment(value); err != nil {
-		common.Odl.Debug("osonEncoder.encodeContainer: failed", "error", err, "stage", "tree")
 		return nil, err
 	}
 
 	enc.prepareContainerHeader()
 	doc := enc.generateContainerDocument()
-	common.Odl.Debug("osonEncoder.encodeContainer: completed",
-		"primaryFields", len(enc.dict.primary),
-		"secondaryFields", len(enc.dict.secondary),
-		"fieldIDWidth", enc.dict.fieldIDWidth,
-		"primaryHeapBytes", enc.primaryHeapSize,
-		"secondaryHeapBytes", enc.secondaryHeapSize,
-		"treeBytes", len(enc.treeSegmentBytes),
-		"version", enc.version,
-		"flags", enc.flags,
-		"documentBytes", len(doc))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFine) {
+		common.Odl.Fine("osonEncoder.encodeContainer: completed",
+			"primaryFields", len(enc.dict.primary),
+			"secondaryFields", len(enc.dict.secondary),
+			"fieldIDWidth", enc.dict.fieldIDWidth,
+			"primaryHeapBytes", enc.primaryHeapSize,
+			"secondaryHeapBytes", enc.secondaryHeapSize,
+			"treeBytes", len(enc.treeSegmentBytes),
+			"version", enc.version,
+			"flags", enc.flags,
+			"documentBytes", len(doc))
+	}
 	return doc, nil
 }
 
@@ -332,7 +336,7 @@ func (enc *osonEncoder) generateContainerDocument() drvCommon.B1Array {
 func (enc *osonEncoder) collectFieldNames(value any) error {
 	kind, err := classifyJSONValue(value)
 	if err != nil {
-		common.Odl.Debug("osonEncoder.collectFieldNames: failed", "error", err)
+		common.Odl.Debug("osonEncoder.collectFieldNames: failed", "error", err, "goType", fmt.Sprintf("%T", value))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 	if kind == drvCommon.KindScalar {
@@ -415,10 +419,12 @@ func (enc *osonEncoder) processFieldNames() {
 	default:
 		enc.dict.fieldIDWidth = osonUB1Size
 	}
-	common.Odl.Debug("osonEncoder.processFieldNames: completed",
-		"primaryFields", len(enc.dict.primary),
-		"secondaryFields", len(enc.dict.secondary),
-		"fieldIDWidth", enc.dict.fieldIDWidth)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFine) {
+		common.Odl.Fine("osonEncoder.processFieldNames: completed",
+			"primaryFields", len(enc.dict.primary),
+			"secondaryFields", len(enc.dict.secondary),
+			"fieldIDWidth", enc.dict.fieldIDWidth)
+	}
 }
 
 // sortFieldNames sorts one dictionary tier by hash, length, then bytes.
@@ -438,7 +444,7 @@ func sortFieldNames(fields []*fieldNameEntry) {
 func (enc *osonEncoder) writeNode(tree *osonWriteBuffer, value any, childOffsetSize int) error {
 	kind, err := classifyJSONValue(value)
 	if err != nil {
-		common.Odl.Debug("osonEncoder.writeNode: failed", "error", err)
+		common.Odl.Debug("osonEncoder.writeNode: failed", "error", err, "goType", fmt.Sprintf("%T", value))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 	switch kind {
@@ -461,10 +467,6 @@ func (enc *osonEncoder) bufferPatchError(operation string, err error) error {
 func (enc *osonEncoder) writeArrayNode(tree *osonWriteBuffer, value []any, elementOffsetSize int) error {
 	nodeOffset := tree.position()
 	count := len(value)
-	common.Odl.Debug("osonEncoder.writeArrayNode: begin",
-		"treeOffset", nodeOffset,
-		"elements", count,
-		"childOffsetWidth", elementOffsetSize)
 	tree.writeUB1(containerOpcode(osonOpArrayType, count, elementOffsetSize))
 	tree.writeContainerCount(count)
 
@@ -477,10 +479,12 @@ func (enc *osonEncoder) writeArrayNode(tree *osonWriteBuffer, value []any, eleme
 			return err
 		}
 	}
-	common.Odl.Debug("osonEncoder.writeArrayNode: completed",
-		"treeOffset", nodeOffset,
-		"elements", count,
-		"encodedBytes", tree.position()-nodeOffset)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeArrayNode: completed",
+			"treeOffset", nodeOffset,
+			"elements", count,
+			"encodedBytes", tree.position()-nodeOffset)
+	}
 	return nil
 }
 
@@ -507,11 +511,6 @@ func (enc *osonEncoder) writeObjectNode(tree *osonWriteBuffer, value map[string]
 	sort.Slice(members, func(i, j int) bool {
 		return members[i].fieldID < members[j].fieldID
 	})
-	common.Odl.Debug("osonEncoder.writeObjectNode: begin",
-		"treeOffset", nodeOffset,
-		"members", len(members),
-		"fieldIDWidth", enc.dict.fieldIDWidth,
-		"childOffsetWidth", childOffsetSize)
 	tree.writeUB1(containerOpcode(osonOpObjectType, len(members), childOffsetSize))
 	tree.writeContainerCount(len(members))
 
@@ -530,10 +529,12 @@ func (enc *osonEncoder) writeObjectNode(tree *osonWriteBuffer, value map[string]
 			return err
 		}
 	}
-	common.Odl.Debug("osonEncoder.writeObjectNode: completed",
-		"treeOffset", nodeOffset,
-		"members", len(members),
-		"encodedBytes", tree.position()-nodeOffset)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeObjectNode: completed",
+			"treeOffset", nodeOffset,
+			"members", len(members),
+			"encodedBytes", tree.position()-nodeOffset)
+	}
 	return nil
 }
 
@@ -542,15 +543,21 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 	switch v := value.(type) {
 	case nil:
 		tree.writeUB1(osonOpNull)
-		common.Odl.Debug("osonEncoder.writeScalarNode: null", "opcode", osonOpNull)
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("osonEncoder.writeScalarNode: null", "opcode", osonOpNull)
+		}
 		return nil
 	case bool:
 		if v {
 			tree.writeUB1(osonOpTrue)
-			common.Odl.Debug("osonEncoder.writeScalarNode: boolean", "opcode", osonOpTrue)
+			if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+				common.Odl.Finest("osonEncoder.writeScalarNode: boolean", "opcode", osonOpTrue)
+			}
 		} else {
 			tree.writeUB1(osonOpFalse)
-			common.Odl.Debug("osonEncoder.writeScalarNode: boolean", "opcode", osonOpFalse)
+			if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+				common.Odl.Finest("osonEncoder.writeScalarNode: boolean", "opcode", osonOpFalse)
+			}
 		}
 		return nil
 	case string:
@@ -587,7 +594,7 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 		return enc.writeStringNumber(tree, v.String())
 	default:
 		details := fmt.Sprintf("invalid OSON scalar value type %T", value)
-		common.Odl.Debug("osonEncoder.writeScalarNode: failed", "reason", details)
+		common.Odl.Debug("osonEncoder.writeScalarNode: failed", "reason", details, "goType", fmt.Sprintf("%T", value))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, nil)
 	}
 	return nil
@@ -640,9 +647,11 @@ func (enc *osonEncoder) writeString(tree *osonWriteBuffer, value string) error {
 		tree.writeUB4(drvCommon.UB4(len(raw)))
 	}
 	tree.writeBytes(drvCommon.B1Array(raw))
-	common.Odl.Debug("osonEncoder.writeString: completed",
-		"opcode", tree.data[nodeOffset],
-		"payloadLength", len(raw))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeString: completed",
+			"opcode", tree.data[nodeOffset],
+			"payloadLength", len(raw))
+	}
 	return nil
 }
 
@@ -650,7 +659,9 @@ func (enc *osonEncoder) writeString(tree *osonWriteBuffer, value string) error {
 func (enc *osonEncoder) writeInt32(tree *osonWriteBuffer, value int32) {
 	payload, _ := converters.EncodeInt(int64(value))
 	opcode := osonOpCompactSigned32Prefix | drvCommon.UB1(len(payload))
-	common.Odl.Debug("osonEncoder.writeInt32: completed", "opcode", opcode, "payloadLength", len(payload))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeInt32: completed", "opcode", opcode, "payloadLength", len(payload))
+	}
 	tree.writeUB1(opcode)
 	tree.writeBytes(payload)
 }
@@ -660,7 +671,9 @@ func (enc *osonEncoder) writeInt64(tree *osonWriteBuffer, value int64) {
 	payload, _ := converters.EncodeInt(value)
 
 	opcode := osonOpCompactSigned64Prefix | drvCommon.UB1(len(payload))
-	common.Odl.Debug("osonEncoder.writeInt64: completed", "opcode", opcode, "payloadLength", len(payload))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeInt64: completed", "opcode", opcode, "payloadLength", len(payload))
+	}
 	tree.writeUB1(opcode)
 	tree.writeBytes(payload)
 }
@@ -677,13 +690,17 @@ func (enc *osonEncoder) writeUInt(tree *osonWriteBuffer, value uint64) {
 func writeOracleNumberPayload(tree *osonWriteBuffer, payload drvCommon.B1Array) {
 	if len(payload) <= _compactOracleNumberMaxPayloadLen {
 		opcode := osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(payload)-1)
-		common.Odl.Debug("writeOracleNumberPayload: compact oracle number", "opcode", opcode, "payloadLength", len(payload))
+		if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+			common.Odl.Finest("writeOracleNumberPayload: compact oracle number", "opcode", opcode, "payloadLength", len(payload))
+		}
 		tree.writeUB1(opcode)
 		tree.writeBytes(payload)
 		return
 	}
 
-	common.Odl.Debug("writeOracleNumberPayload: explicit oracle number", "opcode", osonOpOracleNumber, "payloadLength", len(payload))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("writeOracleNumberPayload: explicit oracle number", "opcode", osonOpOracleNumber, "payloadLength", len(payload))
+	}
 	tree.writeUB1(osonOpOracleNumber)
 	tree.writeUB1(drvCommon.UB1(len(payload)))
 	tree.writeBytes(payload)
@@ -710,7 +727,9 @@ func (enc *osonEncoder) writeStringNumber(tree *osonWriteBuffer, value string) e
 	tree.writeUB1(drvCommon.UB1(len(raw)))
 	tree.writeBytes(raw)
 
-	common.Odl.Debug("osonEncoder.writeStringNumber: string number", "payloadLength", len(raw))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeStringNumber: string number", "payloadLength", len(raw))
+	}
 	return nil
 }
 
@@ -721,7 +740,9 @@ func (enc *osonEncoder) writeBinaryFloat(tree *osonWriteBuffer, value float32) {
 	tree.writeUB1(osonOpBinaryFloat)
 	tree.writeBytes(payload)
 
-	common.Odl.Debug("osonEncoder.writeBinaryFloat: binary float", "opcode", osonOpBinaryFloat, "payloadLength", len(payload))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeBinaryFloat: binary float", "opcode", osonOpBinaryFloat, "payloadLength", len(payload))
+	}
 }
 
 // writeBinaryDouble writes a fixed-width binary double scalar.
@@ -731,7 +752,9 @@ func (enc *osonEncoder) writeBinaryDouble(tree *osonWriteBuffer, value float64) 
 	tree.writeUB1(osonOpBinaryDouble)
 	tree.writeBytes(payload)
 
-	common.Odl.Debug("osonEncoder.writeBinaryDouble: binary double", "opcode", osonOpBinaryDouble, "payloadLength", len(payload))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeBinaryDouble: binary double", "opcode", osonOpBinaryDouble, "payloadLength", len(payload))
+	}
 }
 
 // writeBinary writes a variable-length binary scalar.
@@ -752,9 +775,11 @@ func (enc *osonEncoder) writeBinary(tree *osonWriteBuffer, value drvCommon.B1Arr
 	}
 
 	tree.writeBytes(value)
-	common.Odl.Debug("osonEncoder.writeBinary: completed",
-		"opcode", tree.data[nodeOffset],
-		"payloadLength", len(value))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeBinary: completed",
+			"opcode", tree.data[nodeOffset],
+			"payloadLength", len(value))
+	}
 	return nil
 }
 
@@ -765,9 +790,11 @@ func (enc *osonEncoder) writeTimestamp(tree *osonWriteBuffer, value time.Time) {
 	tree.writeUB1(osonOpTimestamp)
 	tree.writeBytes(payload)
 
-	common.Odl.Debug("osonEncoder.writeTimestamp: completed",
-		"opcode", osonOpTimestamp,
-		"payloadLength", len(payload))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("osonEncoder.writeTimestamp: completed",
+			"opcode", osonOpTimestamp,
+			"payloadLength", len(payload))
+	}
 }
 
 // containerOpcode builds the container opcode from the base type, child count, and child-offset size.

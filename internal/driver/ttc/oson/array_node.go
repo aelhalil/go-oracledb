@@ -82,7 +82,7 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, op
 	// array opcode carrying any of them marks the document as malformed.
 	if opcode&(osonOpChildNoSortBit|osonOpObjectSharedFieldIDsBit|osonOpObjectUpdateOverflowBit) != 0 {
 		details := fmt.Sprintf("array opcode 0x%02x sets object-only flag bits 0x%02x", opcode, opcode&0x07)
-		common.Odl.Debug("newArrayNodeAt: failed", "reason", details, "offset", arrayNodeOffset)
+		common.Odl.Debug("newArrayNodeAt: failed", "reason", details, "offset", arrayNodeOffset, "opcode", opcode)
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
@@ -94,16 +94,18 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, op
 
 	childOffsets, err := readChildOffsetsAt(buf, header, arrayNodeOffset, childOffsetArrayStart, elementCount, opcode)
 	if err != nil {
-		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "count", elementCount)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "elements", elementCount)
 		return nil, err
 	}
 
-	common.Odl.Debug("newArrayNodeAt: parsed",
-		"offset", arrayNodeOffset,
-		"opcode", opcode,
-		"elements", elementCount,
-		"childOffsetWidth", childOffsetSize(opcode),
-		"childOffsetTable", childOffsetArrayStart)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("newArrayNodeAt: parsed",
+			"offset", arrayNodeOffset,
+			"opcode", opcode,
+			"elements", elementCount,
+			"childOffsetWidth", childOffsetSize(opcode),
+			"childOffsetTable", childOffsetArrayStart)
+	}
 	return &arrayNode{
 		nodeBase: nodeBase{
 			buf:    buf,
@@ -156,9 +158,11 @@ func (array *arrayNode) String() (string, error) {
 	jsonBytes, err := json.Marshal(array)
 	if err != nil {
 		common.Odl.Debug("arrayNode.String: failed", "error", err, "offset", array.offset)
-		return "", common.NewOracleError(oracleErrors.JSONRenderingError, nil)
+		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
-	common.Odl.Debug("arrayNode.String: completed", "offset", array.offset, "textBytes", len(jsonBytes))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("arrayNode.String: completed", "offset", array.offset, "textBytes", len(jsonBytes))
+	}
 	return string(jsonBytes), nil
 }
 
@@ -203,11 +207,13 @@ func (array *arrayNode) Get(index int) (drvCommon.JSONNode, bool) {
 		common.Odl.Debug("arrayNode.Get: failed", "error", err, "offset", array.offset, "index", index, "childOffset", array.childOffsets[index])
 		return nil, false
 	}
-	common.Odl.Debug("arrayNode.Get: completed",
-		"offset", array.offset,
-		"index", index,
-		"childOffset", array.childOffsets[index],
-		"childKind", childNode.Kind())
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("arrayNode.Get: completed",
+			"offset", array.offset,
+			"index", index,
+			"childOffset", array.childOffsets[index],
+			"childKind", childNode.Kind())
+	}
 	return childNode, true
 }
 
@@ -236,14 +242,13 @@ func (array *arrayNode) Len() int {
 // Errors:
 //   - child node construction or value decoding failure.
 func (array *arrayNode) Value(opts drvCommon.JSONConversionOptions) ([]any, error) {
-	common.Odl.Debug("arrayNode.Value: begin", "offset", array.offset, "elements", len(array.childOffsets), "options", opts)
 	elementValues := make([]any, len(array.childOffsets))
 	for elementIndex := range array.childOffsets {
 		// Get intentionally returns only a boolean for the public lazy-node API;
 		// materialization must retain the parsing error for its caller.
 		childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[elementIndex])
 		if err != nil {
-			common.Odl.Debug("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex)
+			common.Odl.Debug("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex, "childOffset", array.childOffsets[elementIndex])
 			return nil, err
 		}
 
@@ -256,6 +261,8 @@ func (array *arrayNode) Value(opts drvCommon.JSONConversionOptions) ([]any, erro
 		elementValues[elementIndex] = elementValue
 	}
 
-	common.Odl.Debug("arrayNode.Value: completed", "offset", array.offset, "elements", len(elementValues), "options", opts)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("arrayNode.Value: completed", "offset", array.offset, "elements", len(elementValues), "options", opts)
+	}
 	return elementValues, nil
 }
