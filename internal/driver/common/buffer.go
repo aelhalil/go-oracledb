@@ -348,23 +348,23 @@ type WriteBuffer interface {
 
 // readBuffer is the ReadBuffer implementation over a fixed byte slice.
 type readBuffer struct {
-	data  B1Array
-	pos   uint
-	order binary.ByteOrder
+	data      B1Array
+	pos       uint
+	converter binary.ByteOrder
 }
 
 // writeBuffer is the WriteBuffer implementation over an automatically
 // growing byte slice.
 type writeBuffer struct {
-	data  B1Array
-	order binary.ByteOrder
+	data      B1Array
+	converter binary.ByteOrder
 }
 
 // NewReadBuffer returns a ReadBuffer that reads data in the given byte
 // order. The buffer aliases data and observes later modifications to it.
 // Values other than LITTLE_ENDIAN select big-endian encoding.
 func NewReadBuffer(data B1Array, order ByteOrder) ReadBuffer {
-	return &readBuffer{data: data, order: bufferByteOrder(order)}
+	return &readBuffer{data: data, converter: bufferByteOrder(order)}
 }
 
 // NewWriteBuffer returns an empty WriteBuffer that encodes values in the
@@ -379,7 +379,7 @@ func NewWriteBuffer(order ByteOrder) WriteBuffer {
 // automatically as bytes are appended. Values other than LITTLE_ENDIAN select
 // big-endian encoding.
 func NewWriteBufferWithCapacity(capacity uint, order ByteOrder) WriteBuffer {
-	return &writeBuffer{data: make(B1Array, 0, int(capacity)), order: bufferByteOrder(order)}
+	return &writeBuffer{data: make(B1Array, 0, int(capacity)), converter: bufferByteOrder(order)}
 }
 
 // bufferByteOrder maps the driver's byte-order marker to its standard library
@@ -427,7 +427,7 @@ func (b *readBuffer) ReadUB2() (UB2, error) {
 	if err != nil {
 		return 0, err
 	}
-	return UB2(b.order.Uint16(data)), nil
+	return UB2(b.converter.Uint16(data)), nil
 }
 
 // ReadUB4 reads a four-byte unsigned value.
@@ -436,7 +436,7 @@ func (b *readBuffer) ReadUB4() (UB4, error) {
 	if err != nil {
 		return 0, err
 	}
-	return UB4(b.order.Uint32(data)), nil
+	return UB4(b.converter.Uint32(data)), nil
 }
 
 // ReadUB8 reads an eight-byte unsigned value.
@@ -445,7 +445,7 @@ func (b *readBuffer) ReadUB8() (UB8, error) {
 	if err != nil {
 		return 0, err
 	}
-	return UB8(b.order.Uint64(data)), nil
+	return UB8(b.converter.Uint64(data)), nil
 }
 
 // ReadSB1 reads one signed byte.
@@ -486,7 +486,7 @@ func (b *readBuffer) ReadUB2At(offset uint) (UB2, error) {
 	if err != nil {
 		return 0, err
 	}
-	return UB2(b.order.Uint16(data)), nil
+	return UB2(b.converter.Uint16(data)), nil
 }
 
 // ReadUB4At reads a four-byte unsigned value at offset.
@@ -495,7 +495,7 @@ func (b *readBuffer) ReadUB4At(offset uint) (UB4, error) {
 	if err != nil {
 		return 0, err
 	}
-	return UB4(b.order.Uint32(data)), nil
+	return UB4(b.converter.Uint32(data)), nil
 }
 
 // ReadUB8At reads an eight-byte unsigned value at offset.
@@ -504,7 +504,7 @@ func (b *readBuffer) ReadUB8At(offset uint) (UB8, error) {
 	if err != nil {
 		return 0, err
 	}
-	return UB8(b.order.Uint64(data)), nil
+	return UB8(b.converter.Uint64(data)), nil
 }
 
 // ReadSB1At reads one signed byte at offset.
@@ -577,17 +577,17 @@ func (b *writeBuffer) WriteUB1(value UB1) {
 
 // WriteUB2 appends a two-byte unsigned value.
 func (b *writeBuffer) WriteUB2(value UB2) {
-	b.order.PutUint16(b.grow(2), uint16(value))
+	b.converter.PutUint16(b.grow(2), uint16(value))
 }
 
 // WriteUB4 appends a four-byte unsigned value.
 func (b *writeBuffer) WriteUB4(value UB4) {
-	b.order.PutUint32(b.grow(4), uint32(value))
+	b.converter.PutUint32(b.grow(4), uint32(value))
 }
 
 // WriteUB8 appends an eight-byte unsigned value.
 func (b *writeBuffer) WriteUB8(value UB8) {
-	b.order.PutUint64(b.grow(8), uint64(value))
+	b.converter.PutUint64(b.grow(8), uint64(value))
 }
 
 // WriteSB1 appends one signed byte.
@@ -633,7 +633,7 @@ func (b *writeBuffer) WriteUB2At(offset uint, value UB2) error {
 	if err != nil {
 		return err
 	}
-	b.order.PutUint16(data, uint16(value))
+	b.converter.PutUint16(data, uint16(value))
 	return nil
 }
 
@@ -643,7 +643,7 @@ func (b *writeBuffer) WriteUB4At(offset uint, value UB4) error {
 	if err != nil {
 		return err
 	}
-	b.order.PutUint32(data, uint32(value))
+	b.converter.PutUint32(data, uint32(value))
 	return nil
 }
 
@@ -653,7 +653,7 @@ func (b *writeBuffer) WriteUB8At(offset uint, value UB8) error {
 	if err != nil {
 		return err
 	}
-	b.order.PutUint64(data, uint64(value))
+	b.converter.PutUint64(data, uint64(value))
 	return nil
 }
 

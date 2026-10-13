@@ -113,7 +113,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestStripSpacesOutsideQuotes", Categories: "unitary", Exclusive: false, Fn: TestStripSpacesOutsideQuotes},
 	{Name: "TestConstants_Protocol", Categories: "unitary", Exclusive: false, Fn: TestConstants_Protocol},
 	{Name: "TestConstants_ProtocolString", Categories: "unitary", Exclusive: false, Fn: TestConstants_ProtocolString},
-	{Name: "TestBufferReadWrite", Categories: "unitary", Exclusive: false, Fn: TestBufferReadWrite},
-	{Name: "TestBufferSlicesAndCopies", Categories: "unitary", Exclusive: false, Fn: TestBufferSlicesAndCopies},
-	{Name: "TestBufferErrors", Categories: "unitary", Exclusive: false, Fn: TestBufferErrors},
+	{Name: "TestReadBuffer", Categories: "unitary", Exclusive: false, Fn: TestReadBuffer},
+	{Name: "TestWriteBuffer", Categories: "unitary", Exclusive: false, Fn: TestWriteBuffer},
+	{Name: "TestInvalidBufferOperation", Categories: "unitary", Exclusive: false, Fn: TestInvalidBufferOperation},
 }
