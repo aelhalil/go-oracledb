@@ -148,10 +148,10 @@ func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 		return nil
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
-		common.Odl.Debug("context for Send() cancelled, cancelling writer")
+		common.OdlT(nt.atts.Connectionid).Debug("context for Send() cancelled, cancelling writer")
 		nt.stream.SetWriteDeadline(time.Now())
 		nt._writerWG.Wait()
-		common.Odl.Debug("Send() timed-out, writer is now joined")
+		common.OdlT(nt.atts.Connectionid).Debug("Send() timed-out, writer is now joined")
 		// reset the deadline
 		nt.stream.SetWriteDeadline(time.Time{})
 		return common.NewOracleError(oracleErrors.CtxTimeout, ctx.Err(), "send", fmt.Sprintf("%s:%d", nt.host, nt.port), nt.atts.Connectionid)
@@ -209,10 +209,10 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 		return res.byteCount, nil
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
-		common.Odl.Debug("context for Receive() cancelled, cancelling reader")
+		common.OdlT(nt.atts.Connectionid).Debug("context for Receive() cancelled, cancelling reader")
 		nt.stream.SetReadDeadline(time.Now())
 		nt._readerWG.Wait()
-		common.Odl.Debug("Receive() timed-out, reader is now joined")
+		common.OdlT(nt.atts.Connectionid).Debug("Receive() timed-out, reader is now joined")
 		// reset the deadline
 		nt.stream.SetReadDeadline(time.Time{})
 		return 0, context.Cause(ctxToBeUsed)
@@ -256,7 +256,7 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 		httpsProxyPort = httpsProxyPortOrDefault(httpsProxyPort)
 		dialAddress = net.JoinHostPort(httpsProxy, strconv.Itoa(httpsProxyPort))
 	}
-	common.Odl.Debug("dialing remote host")
+	common.OdlT(nt.atts.Connectionid).Debug("dialing remote host")
 	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", dialAddress)
 	if err != nil {
 		if httpsProxy == "" {

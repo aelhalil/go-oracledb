@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -161,7 +160,7 @@ func (o *tTIoer) init() {
 
 // UnMarshalFrom unmarshals the error data
 func (o *tTIoer) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIoer.UnMarshalFrom: start")
+	common.Odl.Finest("TTIoer.UnMarshalFrom: start")
 	err := o._unmarshalAttributes(ctx, mar)
 	if err != nil {
 		common.Odl.Error("TTIoer.UnMarshalFrom: unmarshalAttributes failed",
@@ -182,7 +181,7 @@ func (o *tTIoer) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 
 	// If the retCode (Error #) is not zero or oerrcd2 != 0, extract the error-string
 	if o.retCode != 0 || o.oerrcd2 != 0 {
-		common.Odl.Debug("TTIoer.UnMarshalFrom: error code != 0, unmarshalling error message")
+		common.Odl.Finest("TTIoer.UnMarshalFrom: error code != 0, unmarshalling error message")
 		err = o._unmarshalErrorMessage(ctx, mar)
 		if err != nil {
 			common.Odl.Error("TTIoer.UnMarshalFrom: unmarshalErrorMessage failed",
@@ -197,7 +196,7 @@ func (o *tTIoer) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		}
 	}
 
-	common.Odl.Debug("TTIoer.UnMarshalFrom: end")
+	common.Odl.Finest("TTIoer.UnMarshalFrom: end")
 
 	return nil
 }
@@ -217,7 +216,7 @@ func (o *tTIoer) _unmarshalErrorMessage(ctx context.Context, mar driverCommon.Ma
 	}
 	o.errorMsg = b[:n]
 	o.errorLength[0] = n
-	common.Odl.Debug("TTIoer.unmarshalErrorMessage: extracted error message", "errorMessage", o.errorMsg)
+	common.Odl.Finest("TTIoer.unmarshalErrorMessage: extracted error message", "errorMessage", o.errorMsg)
 	return nil
 }
 
@@ -225,7 +224,7 @@ func (o *tTIoer) _unmarshalErrorMessage(ctx context.Context, mar driverCommon.Ma
 // To note: As batch processing is not supported in v1, the batch error related fields are not processed.
 func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Marshaller) error {
 	var err error
-	common.Odl.Debug("TTIoer.UnmarshalAttributes: start ", "supportsEndOfCallStatus", o._supportsEndOfCallStatus)
+	common.Odl.Finest("TTIoer.UnmarshalAttributes: start ", "supportsEndOfCallStatus", o._supportsEndOfCallStatus)
 	if o._supportsEndOfCallStatus {
 		o.eocStatus, err = unmarshalEndOfCallStatus(ctx, mar)
 		if err != nil {
@@ -434,8 +433,8 @@ func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Mars
 		)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[o.GetMsgCode()])
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("TTIoer.UnmarshalAttributes: end", "struct", fmt.Sprintf("%+v", o))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("TTIoer.UnmarshalAttributes: end", "struct", fmt.Sprintf("%+v", o))
 	}
 	return nil
 }
@@ -443,7 +442,7 @@ func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Mars
 // _unmarshalWarning reads warning bytes if present
 func (o *tTIoer) _unmarshalWarning(ctx context.Context, mar driverCommon.Marshaller) error {
 	var err error
-	common.Odl.Debug("TTIoer.UnmarshalWarning: start")
+	common.Odl.Finest("TTIoer.UnmarshalWarning: start")
 	if o.retCode, err = mar.UnmarshalUB2(ctx); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalWarning: retCode unmarshal failed",
 			"error", err,
@@ -467,7 +466,7 @@ func (o *tTIoer) _unmarshalWarning(ctx context.Context, mar driverCommon.Marshal
 		if b, err := mar.UnmarshalB1Array(ctx, int(o.warnLength)); err == nil {
 			o.errorMsg = b
 			o.errorLength[0] = int(o.warnLength)
-			common.Odl.Debug("TTIoer.UnmarshalWarning: extracted warning message ", "errorMessage", o.errorMsg)
+			common.Odl.Finest("TTIoer.UnmarshalWarning: extracted warning message ", "errorMessage", o.errorMsg)
 		} else {
 			common.Odl.Error("TTIoer.UnmarshalWarning: error message unmarshal failed",
 				"error", err,
@@ -475,7 +474,7 @@ func (o *tTIoer) _unmarshalWarning(ctx context.Context, mar driverCommon.Marshal
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[o.GetMsgCode()])
 		}
 	}
-	common.Odl.Debug("TTIoer.UnmarshalWarning: end")
+	common.Odl.Finest("TTIoer.UnmarshalWarning: end")
 	return nil
 }
 
@@ -499,12 +498,12 @@ func unmarshalEndOfCallStatus(ctx context.Context, mar driverCommon.Marshaller) 
 			return nil, common.NewOracleError(oracleErrors.FailUnmarshal, err, "EndOfCallStatus")
 		}
 		retVal.elapsedTime = elapsedTime
-		common.Odl.Debug("tTIoer.UnMarshalFrom: EOCS ", "Elapsed time", elapsedTime)
+		common.Odl.Finest("tTIoer.UnMarshalFrom: EOCS ", "Elapsed time", elapsedTime)
 	}
 
 	// server sends this bit to indicate that connection is affected by planned down
 	if (ucaeocs & TtiEocfDropWhenReturned) != 0 {
-		common.Odl.Debug("TTIoer.UnMarshalFrom: EOCS got in-band planned down bit, mark connection for close")
+		common.Odl.Finest("TTIoer.UnMarshalFrom: EOCS got in-band planned down bit, mark connection for close")
 		retVal.connectionShouldBeDropped = true
 		// TODO: set connection to be closed when returned to pool
 	}

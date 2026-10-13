@@ -280,7 +280,7 @@ func (f *SimpleFactory) GetMessage(msgType driverCommon.MessageType) (driverComm
 
 // GetMessageForFunction retrieves the best message implementor for a given function type.
 func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, funcType driverCommon.FunctionType) (driverCommon.Message[driverCommon.MessageType], error) {
-	common.Odl.Debug("New function requested", "code", funcType)
+	common.Odl.Fine("New function requested", "code", funcType)
 
 	key := functionRegistryKey{
 		messageType:  msgType,
@@ -296,7 +296,7 @@ func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, 
 
 	bestCandidate := getBestImplementor(f.ttcVersion, candidates, f.capabilities)
 	if bestCandidate != nil {
-		common.Odl.Debug("Function returned", "candidate", bestCandidate)
+		common.Odl.Fine("Function returned", "candidate", bestCandidate)
 		return bestCandidate.makeFunc(), nil
 	}
 	common.Odl.Warn("No candidate function found", "message type", msgType, "function type", funcType)

@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -130,7 +129,7 @@ func newTTIuds() driverCommon.UnMarshallable {
 
 // UnMarshalFrom extracts column/type metadata fields from the network buffer.
 func (p *tTIuds) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIuds: UnMarshalFrom start")
+	common.Odl.Finest("TTIuds: UnMarshalFrom start")
 	var nullAllowed driverCommon.UB1
 	var err error
 
@@ -182,8 +181,8 @@ func (p *tTIuds) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		common.Odl.Warn("TTIuds.UnMarshalFrom: failed to unmarshal columnFlags", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("TTIuds: fully unmarshalled", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("TTIuds: fully unmarshalled", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }

@@ -44,8 +44,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
+	common "github.com/oracle/go-oracledb/v26/internal/common"
+	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
 // oexfenGoldenPayload extracts the TTC OEXFEN function payload (post header)
@@ -61,7 +61,7 @@ func oexfenGoldenPayload(lines []string) []byte {
 func newOexfenEngine(capacity int) (*ArrayBasedDataBuffer, *MarshalEngine) {
 	buf := NewArrayDataBuffer(capacity)
 	// Match representation profile used by other TTC marshalling tests
-	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	return buf, engine
 }
 
@@ -89,8 +89,8 @@ func TestOexfen_New_Getters(t *testing.T) {
 	if msg.GetMsgCode() != TTIFUN {
 		t.Errorf("expected TTIFUN, got %v", msg.GetMsgCode())
 	}
-	if msg.(interface{ GetFuncCode() common.FunctionType }).GetFuncCode() != oExfen {
-		t.Errorf("expected oExfen, got %v", msg.(interface{ GetFuncCode() common.FunctionType }).GetFuncCode())
+	if msg.(interface{ GetFuncCode() drvCommon.FunctionType }).GetFuncCode() != oExfen {
+		t.Errorf("expected oExfen, got %v", msg.(interface{ GetFuncCode() drvCommon.FunctionType }).GetFuncCode())
 	}
 
 	// pre-18 header variant (smoke)
@@ -121,9 +121,9 @@ func TestOexfen_MarshalTo_MatchesGolden(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Logf("Got OEXFEN packet:")
-		session.PrintPacket(got, 0, len(got))
+		common.Odl.PacketDump(got)
 		t.Logf("Want OEXFEN packet:")
-		session.PrintPacket(want, 0, len(want))
+		common.Odl.PacketDump(want)
 		t.Fatalf("OEXFEN mismatch:\n got (%d bytes): % X\nwant (%d bytes): % X", len(got), got, len(want), want)
 	}
 }
@@ -215,7 +215,7 @@ func TestOexfen_MarshalTo_Failures(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(64),
 			FailOnWriteByteCall:  1, // first WriteByte (func code) fails
 		}
-		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(ctx, engine)
 		if err == nil {
 			t.Fatalf("expected error, got nil")
@@ -244,7 +244,7 @@ func TestOexfen_MarshalTo_Failures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := buildOexfen(true) // commit -> exeflg universal {0x01,0x01}
 			buf := NewArrayDataBuffer(tc.capacity)
-			engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(buf, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(ctx, engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil (capacity=%d)", tc.capacity)

@@ -1065,6 +1065,12 @@ func validateUserName(value reflect.Value, valueName string) (any, error) {
 func validateLoggingLevel(value reflect.Value, valueName string) (any, error) {
 	if value.Kind() == reflect.String {
 		if len(value.String()) != 0 {
+			switch strings.ToUpper(value.String()) {
+			case "FINEST":
+				return slog.Level(-16).String(), nil
+			case "FINE":
+				return slog.Level(-8).String(), nil
+			}
 			var l slog.Level
 			if err := l.UnmarshalText([]byte(value.String())); err == nil {
 				return l.String(), nil

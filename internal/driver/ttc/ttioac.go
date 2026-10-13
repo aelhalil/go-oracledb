@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -112,7 +111,7 @@ Usage:
 	Call this constructore before Marshalling the TTIoac for binding or defining a column.
 */
 func newTTIoac(typ DtyType, maxLength driverCommon.UB4) *tTIoac {
-	common.Odl.Debug("TTIoac.newTTIoac called", "requestedtype", typ, "maxLength", maxLength)
+	common.Odl.Finest("TTIoac.newTTIoac called", "requestedtype", typ, "maxLength", maxLength)
 	obj := &tTIoac{}
 	obj.requestedtype = typ
 	/*
@@ -159,7 +158,7 @@ func newTTIoac(typ DtyType, maxLength driverCommon.UB4) *tTIoac {
 	obj.characterSetID = al32Utf8CharSet
 	obj.characterSetForm = FormChar
 
-	common.Odl.Debug("TTIoac.Init completed",
+	common.Odl.Finest("TTIoac.Init completed",
 		"dataType", obj.dataType,
 		"flags", obj.flags,
 		"maxLength", obj.maxLength,
@@ -259,7 +258,7 @@ func newTTIOacScalarDefine(columnContext columnContext) driverCommon.Marshallabl
 // MarshalTo serializes the TTIoac type information into the network buffer.
 // It returns an error if marshalling fails.
 func (p *tTIoac) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIoac.MarshalTo called")
+	common.Odl.Finest("TTIoac.MarshalTo called")
 	if err := mar.MarshalUB1(ctx, p.dataType); err != nil {
 		common.Odl.Warn("MarshalTo: Failed to marshal dataType", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OAC")
@@ -346,14 +345,14 @@ func (p *tTIoac) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OAC")
 	}
 
-	common.Odl.Debug("TTIoac.MarshalTo completed successfully")
+	common.Odl.Finest("TTIoac.MarshalTo completed successfully")
 	return nil
 }
 
 // UnMarshalFrom extracts information from the network buffer and populates the TTIoac fields.
 // It returns an error if unmarshalling fails.
 func (p *tTIoac) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIoac.UnMarshalFrom called")
+	common.Odl.Finest("TTIoac.UnMarshalFrom called")
 	var err error
 
 	if p.dataType, err = mar.UnmarshalUB1(ctx); err != nil {
@@ -372,7 +371,7 @@ func (p *tTIoac) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 	}
 
 	if p.scale, err = mar.UnmarshalSB1(ctx); err != nil {
-		common.Odl.Debug("UnMarshalFrom: failed to unmarshal scale", "error", err)
+		common.Odl.Finest("UnMarshalFrom: failed to unmarshal scale", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
@@ -382,7 +381,7 @@ func (p *tTIoac) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 	}
 
 	if p.nbArrayElements, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Debug("UnMarshalFrom: failed to unmarshal nbArrayElements", "error", err)
+		common.Odl.Finest("UnMarshalFrom: failed to unmarshal nbArrayElements", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
@@ -433,8 +432,8 @@ func (p *tTIoac) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 			p.maxLength = _oacMaxLengthStampTZ
 		}
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("TTIoac.UnMarshalFrom completed", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("TTIoac.UnMarshalFrom completed", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }
