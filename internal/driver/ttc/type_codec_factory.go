@@ -125,15 +125,19 @@ type defineOacFunc func(columnContext, driverCommon.UB4) driverCommon.Marshallab
 
 type scanTypeFunc func(columnContext) reflect.Type
 
+// typeDecoder groups wire reading, value decoding, and scan metadata for one TTC version.
 type typeDecoder struct {
+	unwrapColumn columnUnwrapFunc
 	decodeToType decoderFunc
 	getScanType  scanTypeFunc
 }
 
-func newTypeDecoder(f decoderFunc, sf scanTypeFunc) *typeDecoder {
+// newTypeDecoder associates a datatype decoder with its explicit wire reader.
+func newTypeDecoder(f decoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
 	_n := &typeDecoder{}
 	_n.decodeToType = f
 	_n.getScanType = sf
+	_n.unwrapColumn = unwrap
 	return _n
 }
 
@@ -455,12 +459,12 @@ func (f *CodecFactoryImpl) getEncoder(normalized normalizedBindValue) (encoderFu
 	if normalized.isOutOnly || normalized.value == nil {
 		return converters.EncodeNull, nil
 	}
-	common.Odl.Debug("New encoder requested", "goType", normalized.goType)
+	common.Odl.Finest("New encoder requested", "goType", normalized.goType)
 
 	candidates := f.encoders.getCandidates(normalized.goType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
-		common.Odl.Debug("Encoder returned", "candidate", bestCandidate)
+		common.Odl.Finest("Encoder returned", "candidate", bestCandidate)
 		return bestCandidate.makeFunc, nil
 	}
 
@@ -489,7 +493,7 @@ Errors:
   - Returns a common.OracleError with code common.InternalError when no decoder candidate exists for dbType.
 */
 func (f *CodecFactoryImpl) getDecoder(dbType DtyType) (*typeDecoder, error) {
-	common.Odl.Debug("New decoder requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
+	common.Odl.Finest("New decoder requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
 
 	candidates := f.decoders.getCandidates(dbType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
@@ -499,7 +503,7 @@ func (f *CodecFactoryImpl) getDecoder(dbType DtyType) (*typeDecoder, error) {
 		return nil, err
 	}
 
-	common.Odl.Debug("Decoder returned", "candidate", bestCandidate)
+	common.Odl.Finest("Decoder returned", "candidate", bestCandidate)
 	return bestCandidate.makeFunc, nil
 }
 
@@ -554,7 +558,7 @@ Errors:
   - Returns a common.OracleError with code common.InternalError when no OAC candidate exists for the bind type.
 */
 func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
-	common.Odl.Debug("New bind OAC requested", "goType", normalized.goType, "maxLength", maxLength)
+	common.Odl.Finest("New bind OAC requested", "goType", normalized.goType, "maxLength", maxLength)
 
 	candidates := f.bindOacs.getCandidates(normalized.goType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
@@ -571,7 +575,7 @@ func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength 
 			oac.(*tTIoac).maxLength = bindOacTypeObj.maxLength
 			oac.(*tTIoac).scale = bindOacTypeObj.scale
 		}
-		common.Odl.Debug("Bind OAC returned", "candidate", bestCandidate)
+		common.Odl.Finest("Bind OAC returned", "candidate", bestCandidate)
 		return oac, nil
 	}
 
@@ -602,7 +606,7 @@ func (f *CodecFactoryImpl) getDefineOac(
 	columnContext columnContext,
 	connectionProperties driverCommon.DriverProperties,
 ) driverCommon.Marshallable {
-	common.Odl.Debug("New define OAC requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
+	common.Odl.Finest("New define OAC requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
 
 	candidates := f.defineOacs.getCandidates(dbType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
@@ -613,7 +617,7 @@ func (f *CodecFactoryImpl) getDefineOac(
 
 	if bestCandidate != nil {
 		oac := bestCandidate.makeFunc(columnContext, lobPrefetchSize)
-		common.Odl.Debug("Define OAC returned", "candidate", bestCandidate)
+		common.Odl.Finest("Define OAC returned", "candidate", bestCandidate)
 		return oac
 	}
 

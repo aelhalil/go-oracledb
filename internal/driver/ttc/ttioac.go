@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -112,7 +111,7 @@ Usage:
 	Call this constructore before Marshalling the TTIoac for binding or defining a column.
 */
 func newTTIoac(typ DtyType, maxLength driverCommon.UB4) *tTIoac {
-	common.Odl.Debug("TTIoac.newTTIoac called", "requestedtype", typ, "maxLength", maxLength)
+	common.Odl.Finest("TTIoac.newTTIoac called", "requestedtype", typ, "maxLength", maxLength)
 	obj := &tTIoac{}
 	obj.requestedtype = typ
 	/*
@@ -159,7 +158,7 @@ func newTTIoac(typ DtyType, maxLength driverCommon.UB4) *tTIoac {
 	obj.characterSetID = al32Utf8CharSet
 	obj.characterSetForm = FormChar
 
-	common.Odl.Debug("TTIoac.Init completed",
+	common.Odl.Finest("TTIoac.Init completed",
 		"dataType", obj.dataType,
 		"flags", obj.flags,
 		"maxLength", obj.maxLength,
@@ -259,7 +258,7 @@ func newTTIOacScalarDefine(columnContext columnContext) driverCommon.Marshallabl
 // MarshalTo serializes the TTIoac type information into the network buffer.
 // It returns an error if marshalling fails.
 func (p *tTIoac) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIoac.MarshalTo called")
+	common.Odl.Finest("TTIoac.MarshalTo called")
 	if err := mar.MarshalUB1(ctx, p.dataType); err != nil {
 		common.Odl.Warn("MarshalTo: Failed to marshal dataType", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OAC")
@@ -346,80 +345,80 @@ func (p *tTIoac) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OAC")
 	}
 
-	common.Odl.Debug("TTIoac.MarshalTo completed successfully")
+	common.Odl.Finest("TTIoac.MarshalTo completed successfully")
 	return nil
 }
 
-// UnMarshalFrom extracts information from the network buffer and populates the TTIoac fields.
+// UnmarshalFrom extracts information from the network buffer and populates the TTIoac fields.
 // It returns an error if unmarshalling fails.
-func (p *tTIoac) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIoac.UnMarshalFrom called")
+func (p *tTIoac) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+	common.Odl.Finest("TTIoac.UnmarshalFrom called")
 	var err error
 
 	if p.dataType, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal dataType", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal dataType", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.flags, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal flags", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal flags", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.precision, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal precision", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal precision", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.scale, err = mar.UnmarshalSB1(ctx); err != nil {
-		common.Odl.Debug("UnMarshalFrom: failed to unmarshal scale", "error", err)
+		common.Odl.Finest("UnmarshalFrom: failed to unmarshal scale", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.maxLength, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal maxLength", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal maxLength", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.nbArrayElements, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Debug("UnMarshalFrom: failed to unmarshal nbArrayElements", "error", err)
+		common.Odl.Finest("UnmarshalFrom: failed to unmarshal nbArrayElements", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.flagsContinuation, err = mar.UnmarshalUB8(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal flagsContinuation", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal flagsContinuation", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	var dalc dynamicAllocatedArray
-	if err = dalc.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal toid/dalc", "error", err)
+	if err = dalc.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal toid/dalc", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 	p.toid = &dalc.value
 
 	if p.versionNumber, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal versionNumber", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal versionNumber", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.characterSetID, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal characterSetID", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal characterSetID", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.characterSetForm, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal characterSetForm", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal characterSetForm", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.codepointLengthLimit, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal codepointLengthLimit", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal codepointLengthLimit", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	if p.collationID, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal collationID", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal collationID", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
@@ -433,8 +432,8 @@ func (p *tTIoac) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 			p.maxLength = _oacMaxLengthStampTZ
 		}
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("TTIoac.UnMarshalFrom completed", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("TTIoac.UnmarshalFrom completed", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }

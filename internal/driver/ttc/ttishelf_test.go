@@ -232,7 +232,7 @@ func TestTTIShelf_LocalizedStatementExecError(t *testing.T) {
 	} else if sqle.ErrorCode() != string(oracleErrors.InternalError) {
 		t.Fatalf("expected error code %s, got %s", oracleErrors.InternalError, sqle.ErrorCode())
 	}
-	if got, want := err.Error(), "OGD-00062 - erreur interne factice."; got != want {
+	if got, want := err.Error(), "OGD-00062 - une erreur interne s'est produite."; got != want {
 		t.Fatalf("unexpected localized error %q, want %q", got, want)
 	}
 }
@@ -282,7 +282,7 @@ func (t *testCodecFactory) getEncoder(_ normalizedBindValue) (encoderFunc, error
 func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
 	return newTypeDecoder(func(columnContext, driverCommon.B1Array) (driver.Value, error) {
 		return t.decode, nil
-	}, nil), nil
+	}, nil, unwrapCLRColumn), nil
 }
 func (t *testCodecFactory) getBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
 	return t.bindOac, nil
