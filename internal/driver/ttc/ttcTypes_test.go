@@ -423,7 +423,7 @@ func TestMarshalKeyValuePairWithName(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var got dynamicAllocatedArray
-			if err := got.UnMarshalFrom(ctx, engine); err != nil {
+			if err := got.UnmarshalFrom(ctx, engine); err != nil {
 				t.Fatalf("unmarshal %s: %v", tt.name, err)
 			}
 			if !bytes.Equal(got.value, tt.want) {
