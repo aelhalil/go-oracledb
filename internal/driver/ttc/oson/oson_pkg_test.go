@@ -70,6 +70,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestHeaderRejectsInvalidUpdateMetadata", Categories: "unitary", Fn: TestHeaderRejectsInvalidUpdateMetadata},
 	{Name: "TestHeaderRejectsOutOfRangeUpdateMappings", Categories: "unitary", Fn: TestHeaderRejectsOutOfRangeUpdateMappings},
 	{Name: "TestHeaderRejectsMalformedDictionaryHeap", Categories: "unitary", Fn: TestHeaderRejectsMalformedDictionaryHeap},
+	{Name: "TestHeaderRejectsImpossibleDictionaryCounts", Categories: "unitary", Fn: TestHeaderRejectsImpossibleDictionaryCounts},
 
 	// Validate container tables and node references before exposing document values.
 	{Name: "TestParseRejectsMalformedContainerTables", Categories: "unitary", Fn: TestParseRejectsMalformedContainerTables},

@@ -236,6 +236,49 @@ func TestHeaderRejectsMalformedDictionaryHeap(t *testing.T) {
 	}
 }
 
+// TestHeaderRejectsImpossibleDictionaryCounts verifies tiny documents cannot
+// declare billions of dictionary entries, without allocating those dictionaries.
+func TestHeaderRejectsImpossibleDictionaryCounts(t *testing.T) {
+	primaryFlags := drvCommon.UB2(osonFlagInlineLeafMask | osonFlagDistinctFieldCountUB4Mask)
+	primaryCountDoc := drvCommon.B1Array{
+		0xff, 0x4a, 0x5a, 0x01, // magic and version
+		byte(primaryFlags >> 8), byte(primaryFlags),
+		0xff, 0xff, 0xff, 0xff, // primary count: 2^32 - 1
+		0x00, 0x00, // primary heap size
+		0x00, 0x00, // tree size
+		0x00, 0x00, // tiny-node count
+	}
+
+	secondaryFlags := drvCommon.UB2(osonFlagInlineLeafMask)
+	secondaryCountDoc := drvCommon.B1Array{
+		0xff, 0x4a, 0x5a, 0x03, // magic and version
+		byte(secondaryFlags >> 8), byte(secondaryFlags),
+		0x00,       // primary count
+		0x00, 0x00, // primary heap size
+		0x00, 0x00, // secondary flags
+		0xff, 0xff, 0xff, 0xff, // secondary count: 2^32 - 1
+		0x00, 0x00, 0x00, 0x00, // secondary heap size
+		0x00, 0x00, // tree size
+		0x00, 0x00, // tiny-node count
+	}
+
+	tests := []struct {
+		name string
+		doc  drvCommon.B1Array
+	}{
+		{name: "primary", doc: primaryCountDoc},
+		{name: "secondary", doc: secondaryCountDoc},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := (&osonHeader{}).readHeader(newOsonBuffer(test.doc))
+			if err == nil {
+				t.Fatalf("readHeader accepted an impossible %s dictionary count in a %d-byte document; want malformed-header error", test.name, len(test.doc))
+			}
+		})
+	}
+}
+
 // TestHeaderUsesFlagSelectedWidths verifies the header reads its fields with
 // the widths selected by its flags.
 func TestHeaderUsesFlagSelectedWidths(t *testing.T) {
@@ -251,6 +294,8 @@ func TestHeaderUsesFlagSelectedWidths(t *testing.T) {
 		0x00, 0x00, 0x00, 0x40,
 		0x00, 0x02,
 	}
+	// Supply the declared payload; this test isolates header width decoding.
+	v3 = append(v3, make([]byte, 256*5+0x123+4+0x102+0x40)...)
 	header := &osonHeader{}
 	layout, err := header.readHeader(newOsonBuffer(v3))
 	if err != nil {
@@ -272,6 +317,7 @@ func TestHeaderUsesFlagSelectedWidths(t *testing.T) {
 		0x00, 0x04,
 		0x00, 0x01,
 	}
+	v1 = append(v1, make([]byte, 256*3+8+4)...)
 	layout, err = (&osonHeader{}).readHeader(newOsonBuffer(v1))
 	if err != nil {
 		t.Fatalf("readHeader(v1) error = %v", err)

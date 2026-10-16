@@ -51,13 +51,13 @@ import (
 // _parsedDictionaryLayout holds the dictionary counts and heap sizes needed to decode the wire format.
 type _parsedDictionaryLayout struct {
 	// primaryCount is the number of primary-tier field names.
-	primaryCount int
+	primaryCount uint
 	// primaryHeapSize is the byte size of the primary dictionary heap.
-	primaryHeapSize int
+	primaryHeapSize uint
 	// secondaryCount is the number of secondary-tier field names.
-	secondaryCount int
+	secondaryCount uint
 	// secondaryHeapSize is the byte size of the secondary dictionary heap.
-	secondaryHeapSize int
+	secondaryHeapSize uint
 }
 
 // dictionary stores the decoded OSON field-name dictionary.
@@ -110,7 +110,7 @@ type osonHeader struct {
 	primaryFieldsCount int
 
 	// treeSegmentByteLength is the declared size of the encoded tree segment.
-	treeSegmentByteLength drvCommon.UB4
+	treeSegmentByteLength uint
 
 	// treeSegmentStartOffset is the absolute offset where the tree segment begins.
 	treeSegmentStartOffset int
@@ -124,7 +124,7 @@ type osonHeader struct {
 	// extendedTreeSegmentStartOffset is the absolute offset of the extended tree segment.
 	extendedTreeSegmentStartOffset int
 	// extendedTreeSegmentByteLength is the declared length of the extended tree segment.
-	extendedTreeSegmentByteLength drvCommon.UB4
+	extendedTreeSegmentByteLength uint
 
 	// forwardingAddresses maps tree-relative offsets from the base tree to the extended tree.
 	forwardingAddresses map[int]int
@@ -315,9 +315,8 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "reason", details)
 		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
-	h.extendedTreeSegmentByteLength = extendedTreeSize
+	h.extendedTreeSegmentByteLength = uint(extendedTreeSize)
 
-	h.forwardingAddresses = make(map[int]int, int(numMappings))
 	entrySize := osonUpdateMappingEntrySizeUB4
 	if h.isSetUpdate(osonFlagUpdateOverflowSegmentUB2Mask) {
 		// Compact update headers use UB2 pairs: [primary-tree-relative][extended-tree-relative].
@@ -328,6 +327,7 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "reason", details, "mappingBytes", mappingBytes, "entryWidth", entrySize)
 		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
+	h.forwardingAddresses = make(map[int]int, int(numMappings))
 	for i := 0; i < int(numMappings); i++ {
 		if h.isSetUpdate(osonFlagUpdateOverflowSegmentUB2Mask) {
 			from, err := buf.readUB2()
@@ -455,6 +455,9 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 			return layout, err
 		}
 		h.treeSegmentByteLength = size
+		if err := buf.ensureAvailable(int(size)); err != nil {
+			return layout, err
+		}
 		return layout, nil
 	}
 
@@ -465,21 +468,21 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err)
 			return layout, err
 		}
-		layout.primaryCount = int(val)
+		layout.primaryCount = uint(val)
 	case h.isSet(osonFlagDistinctFieldCountUB2Mask):
 		val, err := buf.readUB2()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err)
 			return layout, err
 		}
-		layout.primaryCount = int(val)
+		layout.primaryCount = uint(val)
 	default:
 		val, err := buf.readUB1()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err)
 			return layout, err
 		}
-		layout.primaryCount = int(val)
+		layout.primaryCount = uint(val)
 	}
 
 	// The primary dictionary heap stores the actual field-name bytes. The flag
@@ -490,14 +493,14 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err)
 			return layout, err
 		}
-		layout.primaryHeapSize = int(val)
+		layout.primaryHeapSize = uint(val)
 	} else {
 		val, err := buf.readUB2()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err)
 			return layout, err
 		}
-		layout.primaryHeapSize = int(val)
+		layout.primaryHeapSize = uint(val)
 	}
 
 	// OSON v3+ can carry a secondary dictionary for keys longer than 255 bytes.
@@ -518,13 +521,13 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err)
 			return layout, err
 		}
-		layout.secondaryCount = int(val)
+		layout.secondaryCount = uint(val)
 		val, err = buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readHeader: failed", "error", err)
 			return layout, err
 		}
-		layout.secondaryHeapSize = int(val)
+		layout.secondaryHeapSize = uint(val)
 	}
 
 	// The tree segment follows the header (for scalars) or the dictionaries (for
@@ -539,6 +542,28 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 	if h.tinyNodeStatCount, err = buf.readUB2(); err != nil {
 		common.Odl.Debug("osonHeader.readHeader: failed", "error", err)
 		return layout, err
+	}
+
+	// Validate the entire declared layout before any dictionary reader allocates.
+	primaryOffsetSize := osonUB2Size
+	if h.isSet(osonFlagFieldHeapSizeUB4Mask) {
+		primaryOffsetSize = osonUB4Size
+	}
+	secondaryOffsetSize := osonUB4Size
+	if h.secondaryFlags&osonFlagSecondaryFieldOffsetsUB2Mask != 0 {
+		secondaryOffsetSize = osonUB2Size
+	}
+	requiredBytes := uint64(layout.primaryCount)*uint64(osonPrimaryDictHashIDSizeUB1+primaryOffsetSize) +
+		uint64(layout.primaryHeapSize) +
+		uint64(layout.secondaryCount)*uint64(osonSecondaryDictHashIDSizeUB2+secondaryOffsetSize) +
+		uint64(layout.secondaryHeapSize) + uint64(h.treeSegmentByteLength)
+	if requiredBytes > uint64(buf.remaining()) {
+		common.Odl.Debug("osonHeader.readHeader: failed", "reason", "declared layout exceeds available bytes",
+			"requiredBytes", requiredBytes, "remainingBytes", buf.remaining(),
+			"primaryCount", layout.primaryCount, "secondaryCount", layout.secondaryCount,
+			"primaryHeapSize", layout.primaryHeapSize, "secondaryHeapSize", layout.secondaryHeapSize,
+			"treeSegmentSize", h.treeSegmentByteLength)
+		return layout, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
@@ -562,7 +587,7 @@ func (h *osonHeader) readHeader(buf *osonBuffer) (_parsedDictionaryLayout, error
 //
 // Errors:
 //   - Returns an internal error if the selected UB2 or UB4 size field is truncated.
-func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (drvCommon.UB4, error) {
+func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (uint, error) {
 	// Tree size width is selected by a primary header flag.
 	if h.isSet(osonFlagTreeSegmentSizeUB4Mask) {
 		val, err := buf.readUB4()
@@ -570,14 +595,14 @@ func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (drvCommon.UB4, error)
 			common.Odl.Debug("osonHeader.readTreeSegmentSize: failed", "error", err, "width", osonUB4Size)
 			return 0, err
 		}
-		return val, nil
+		return uint(val), nil
 	}
 	val, err := buf.readUB2()
 	if err != nil {
 		common.Odl.Debug("osonHeader.readTreeSegmentSize: failed", "error", err, "width", osonUB2Size)
 		return 0, err
 	}
-	return drvCommon.UB4(val), nil
+	return uint(val), nil
 }
 
 // readPrimaryDictionary decodes the short-key dictionary.
@@ -594,7 +619,7 @@ func (h *osonHeader) readTreeSegmentSize(buf *osonBuffer) (drvCommon.UB4, error)
 // Errors:
 //   - Returns an internal error for truncated arrays, invalid offsets, or malformed heap entries.
 func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictionaryLayout) error {
-	count := layout.primaryCount
+	count := int(layout.primaryCount)
 
 	hashIDs, err := h.readPrimaryHashes(buf, count)
 	if err != nil {
@@ -607,7 +632,7 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 	}
 
 	// The heap contains length-prefixed UTF-8 names packed back-to-back.
-	heapSize := layout.primaryHeapSize
+	heapSize := int(layout.primaryHeapSize)
 	heap, err := buf.readSlice(heapSize)
 	if err != nil {
 		common.Odl.Debug("osonHeader.readPrimaryDictionary: failed", "error", err, "heapBytes", heapSize)
@@ -677,7 +702,7 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 //   - Returns an internal error for truncated arrays,
 //     invalid offsets, or malformed long-key heap entries.
 func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDictionaryLayout) error {
-	count := layout.secondaryCount
+	count := int(layout.secondaryCount)
 
 	hashIDs, err := h.readSecondaryHashes(buf, count)
 	if err != nil {
@@ -690,7 +715,7 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 	}
 
 	// The secondary heap is also packed, but each name uses a UB2 length prefix.
-	heapSize := layout.secondaryHeapSize
+	heapSize := int(layout.secondaryHeapSize)
 	heap, err := buf.readSlice(heapSize)
 	if err != nil {
 		common.Odl.Debug("osonHeader.readSecondaryDictionary: failed", "error", err, "heapBytes", heapSize)
