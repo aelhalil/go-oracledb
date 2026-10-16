@@ -68,6 +68,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestHeaderUsesFlagSelectedWidths", Categories: "unitary", Fn: TestHeaderUsesFlagSelectedWidths},
 	{Name: "TestParseRejectsMalformedHeaders", Categories: "unitary", Fn: TestParseRejectsMalformedHeaders},
 	{Name: "TestHeaderRejectsInvalidUpdateMetadata", Categories: "unitary", Fn: TestHeaderRejectsInvalidUpdateMetadata},
+	{Name: "TestHeaderRejectsUpdateCaps", Categories: "unitary", Fn: TestHeaderRejectsUpdateCaps},
 	{Name: "TestHeaderRejectsOutOfRangeUpdateMappings", Categories: "unitary", Fn: TestHeaderRejectsOutOfRangeUpdateMappings},
 	{Name: "TestHeaderRejectsMalformedDictionaryHeap", Categories: "unitary", Fn: TestHeaderRejectsMalformedDictionaryHeap},
 	{Name: "TestHeaderRejectsImpossibleDictionaryCounts", Categories: "unitary", Fn: TestHeaderRejectsImpossibleDictionaryCounts},

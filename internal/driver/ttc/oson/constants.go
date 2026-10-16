@@ -72,12 +72,18 @@ const (
 	osonVersionByteMask = 0x00_00_00_ff
 )
 
-// OSON update mapping entry sizes.
+// OSON update mapping entry sizes and limits.
 const (
 	// osonUpdateMappingEntrySizeUB2 is the byte size of one UB2 overflow mapping pair.
 	osonUpdateMappingEntrySizeUB2 = 2 * 2
 	// osonUpdateMappingEntrySizeUB4 is the byte size of one UB4 overflow mapping pair.
 	osonUpdateMappingEntrySizeUB4 = 4 * 2
+	// osonUpdateMaxOverflowEntries is the maximum number of used tiny-node
+	// address mappings allowed in one update header.
+	osonUpdateMaxOverflowEntries = 1024
+	// osonUpdateMaxOverflowMapSize is the maximum allocated byte size of the
+	// overflow-address-map segment.
+	osonUpdateMaxOverflowMapSize = 8192
 )
 
 // OSON scalar length-header sizes.

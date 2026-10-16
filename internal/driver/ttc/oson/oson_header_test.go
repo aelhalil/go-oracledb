@@ -124,6 +124,51 @@ func TestHeaderRejectsInvalidUpdateMetadata(t *testing.T) {
 	}
 }
 
+// TestHeaderRejectsUpdateCaps verifies the header enforces the partial-update
+// caps: at most 1024 overflow-address map entries and an 8192-byte map segment,
+// for both mapping widths.
+func TestHeaderRejectsUpdateCaps(t *testing.T) {
+	// Update header layout: [flags UB2][entry count UB2][reserved UB4][map size UB4][extended tree size UB4].
+	tests := []struct {
+		name   string
+		sample osonSample
+	}{
+		{"UB2", sampleUpdatedOverflow},
+		{"UB4", sampleUpdatedOverflowUB4},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			header, err := newOsonHeader(newOsonBuffer(test.sample.oson))
+			if err != nil {
+				t.Fatalf("newOsonHeader(valid update) error = %v", err)
+			}
+			updateStart := header.treeSegmentOffset() + int(header.treeSegmentByteLength)
+			for _, limit := range []struct {
+				name   string
+				offset int
+				width  int
+				value  int
+			}{
+				{"entry count", updateStart + osonUB2Size, osonUB2Size, osonUpdateMaxOverflowEntries + 1},
+				{"map size", updateStart + 2*osonUB2Size + osonUB4Size, osonUB4Size, osonUpdateMaxOverflowMapSize + 1},
+			} {
+				t.Run(limit.name, func(t *testing.T) {
+					doc := test.sample.cloneOSON()
+					patch := &osonWriteBuffer{data: doc}
+					if err := patch.patchUint(limit.offset, limit.width, limit.value); err != nil {
+						t.Fatalf("patchUint(%s) error = %v", limit.name, err)
+					}
+					_, err := Parse(doc)
+					if err == nil {
+						t.Fatalf("Parse accepted %s %d above the OSON limit", limit.name, limit.value)
+					}
+					assertOracleErrorCode(t, err, oracleErrors.InternalError)
+				})
+			}
+		})
+	}
+}
+
 // TestHeaderRejectsOutOfRangeUpdateMappings verifies the header rejects update
 // mappings pointing outside the tree segment.
 func TestHeaderRejectsOutOfRangeUpdateMappings(t *testing.T) {

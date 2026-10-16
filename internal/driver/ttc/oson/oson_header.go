@@ -287,6 +287,15 @@ func (h *osonHeader) readOptionalUpdateHeader(buf *osonBuffer) error {
 		return err
 	}
 
+	// The update metadata entry count and map segment size have fixed limits;
+	// reject oversized values before trusting any derived segment width.
+	if numMappings > osonUpdateMaxOverflowEntries || mappingSegmentSize > osonUpdateMaxOverflowMapSize {
+		common.Odl.Debug("osonHeader.readOptionalUpdateHeader: failed", "reason", "update metadata exceeds OSON limits",
+			"mappingCount", numMappings, "maxMappingCount", osonUpdateMaxOverflowEntries,
+			"mappingBytes", mappingSegmentSize, "maxMappingBytes", osonUpdateMaxOverflowMapSize)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
+	}
+
 	mappingBytes := int(mappingSegmentSize)
 	extendedBytes := int(extendedTreeSize)
 	if flags&^osonFlagUpdateOverflowSegmentUB2Mask != 0 || reserved != 0 {
