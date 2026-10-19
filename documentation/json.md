@@ -211,7 +211,7 @@ unified Go type for every fetched number, set `Options.NumberMode` to
 `NumberAsJSONNumber` for `stdjson.Number` values or `NumberAsFloat64` for
 `float64` values. Leave it as `NumberDefault` to use the mapping above.
 
-See [Control number precision](#control-number-precision) for how to set the option.
+See [Control number representation](#control-number-representation) for how to set the option.
 
 ## JSON encoding and decoding options
 

@@ -81,17 +81,9 @@ func main() {
 	// inserting a JSON text.
 	jsonText := `{
 		"order": {
-			"customer": {
-				"name": "Alice",
-				"addresses": [
-					{"city": "London", "country": "UK"},
-					{"city": "Paris", "country": "France"}
-				]
-			},
 			"id": 9007199254740993,
 			"items": [
-				{"sku": "A-100", "quantity": 2},
-				{"sku": "B-200", "quantity": 1}
+				{"sku": "A-100"}
 			]
 		}
 	}`
@@ -101,25 +93,14 @@ func main() {
 	}
 
 	// inserting a JSON from Go values.
-	mapDoc, err := ojson.NewJSON(map[string]any{
+	mapDoc, _ := ojson.NewJSON(map[string]any{
 		"order": map[string]any{
-			"customer": map[string]any{
-				"name": "Bob",
-				"addresses": []any{
-					map[string]any{"city": "New York", "country": "USA"},
-					map[string]any{"city": "Toronto", "country": "Canada"},
-				},
-			},
 			"id": int64(9007199254740994),
 			"items": []any{
-				map[string]any{"sku": "C-300", "quantity": 3},
-				map[string]any{"sku": "D-400", "quantity": 4},
+				map[string]any{"sku": "C-300"},
 			},
 		},
 	})
-	if err != nil {
-		log.Fatal(err)
-	}
 	if _, err := db.ExecContext(ctx, "insert into "+table+" (id, doc) values (:1, :2)", 2, mapDoc); err != nil {
 		log.Fatal(err)
 	}
@@ -144,8 +125,8 @@ func main() {
 		}
 		fmt.Printf("JSON text: %s\n", text)
 		// Expected output:
-		// First row: JSON text: {"order":{"customer":{"addresses":[{"city":"London","country":"UK"},{"city":"Paris","country":"France"}],"name":"Alice"},"id":9007199254740993,"items":[{"quantity":2,"sku":"A-100"},{"quantity":1,"sku":"B-200"}]}}
-		// Second row: JSON text: {"order":{"customer":{"addresses":[{"city":"New York","country":"USA"},{"city":"Toronto","country":"Canada"}],"name":"Bob"},"id":9007199254740994,"items":[{"quantity":3,"sku":"C-300"},{"quantity":4,"sku":"D-400"}]}}
+		// First row: JSON text: {"order":{"id":9007199254740993,"items":[{"sku":"A-100"}]}}
+		// Second row: JSON text: {"order":{"id":9007199254740994,"items":[{"sku":"C-300"}]}}
 
 		// The default mode already chooses an appropriate Go number type. Set this
 		// option only when every JSON number should be json.Number. Use
@@ -153,81 +134,47 @@ func main() {
 		doc.SetOptions(ojson.Options{NumberMode: ojson.NumberAsJSONNumber})
 
 		// Use the access API to view the document root as an object.
-		object, err := doc.AsJSONObject()
-		if err != nil {
-			log.Fatal(err)
-		}
+		object, _ := doc.AsJSONObject()
 
 		// Access the "order" member without decoding the whole document.
-		orderJSON, ok := object.Get("order")
-		if !ok {
-			log.Fatal("order is missing")
-		}
+		orderJSON, _ := object.Get("order")
 
 		// Access nested object members from the order.
-		order, err := orderJSON.AsJSONObject()
-		if err != nil {
-			log.Fatal(err)
-		}
+		order, _ := orderJSON.AsJSONObject()
 
 		// Access the order ID as a scalar. NumberAsJSONNumber returns json.Number.
-		idJSON, ok := order.Get("id")
-		if !ok {
-			log.Fatal("order ID is missing")
-		}
-		id, err := idJSON.AsJSONScalar()
-		if err != nil {
-			log.Fatal(err)
-		}
-		idValue, err := id.GetValue()
-		if err != nil {
-			log.Fatal(err)
-		}
+		idJSON, _ := order.Get("id")
+		id, _ := idJSON.AsJSONScalar()
+		idValue, _ := id.GetValue()
+
 		fmt.Printf("Order ID (%T): %v\n", idValue, idValue)
 		// Expected output:
 		// First row: Order ID (json.Number): 9007199254740993
 		// Second row: Order ID (json.Number): 9007199254740994
 
 		// Access the items array from the order object.
-		itemsJSON, ok := order.Get("items")
-		if !ok {
-			log.Fatal("items are missing")
-		}
-		items, err := itemsJSON.AsJSONArray()
-		if err != nil {
-			log.Fatal(err)
-		}
+		itemsJSON, _ := order.Get("items")
+		items, _ := itemsJSON.AsJSONArray()
+
 		fmt.Printf("Item count: %d\n", items.Len())
 		// Expected output:
-		// First row: Item count: 2
-		// Second row: Item count: 2
+		// First row: Item count: 1
+		// Second row: Item count: 1
 
 		// Access the first item and then its SKU scalar.
-		firstItemJSON, err := items.Get(0)
-		if err != nil {
-			log.Fatal(err)
-		}
-		firstItem, err := firstItemJSON.AsJSONObject()
-		if err != nil {
-			log.Fatal(err)
-		}
-		skuJSON, ok := firstItem.Get("sku")
-		if !ok {
-			log.Fatal("item SKU is missing")
-		}
-		sku, err := skuJSON.AsJSONScalar()
-		if err != nil {
-			log.Fatal(err)
-		}
+		firstItemJSON, _ := items.Get(0)
+		firstItem, _ := firstItemJSON.AsJSONObject()
+
+		skuJSON, _ := firstItem.Get("sku")
+		sku, _ := skuJSON.AsJSONScalar()
 		skuValue, err := sku.GetValue()
-		if err != nil {
-			log.Fatal(err)
-		}
+
 		fmt.Printf("First item SKU: %v\n", skuValue)
 		// Expected output:
 		// First row: First item SKU: A-100
 		// Second row: First item SKU: C-300
 	}
+
 	if err := rows.Err(); err != nil {
 		log.Fatal(err)
 	}

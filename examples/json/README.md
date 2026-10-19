@@ -39,8 +39,7 @@ First document:
   "order": {
     "id": 9007199254740993,
     "items": [
-      {"sku": "A-100", "quantity": 2},
-      {"sku": "B-200", "quantity": 1}
+      {"sku": "A-100"}
     ]
   }
 }
@@ -53,8 +52,7 @@ Second document:
   "order": {
     "id": 9007199254740994,
     "items": [
-      {"sku": "C-300", "quantity": 3},
-      {"sku": "D-400", "quantity": 4}
+      {"sku": "C-300"}
     ]
   }
 }
@@ -75,20 +73,17 @@ The example accesses these paths in the first JSON document:
 ```text
 doc (object)
 └── order (object)
-    ├── customer (not accessed)
     ├── id (number): 9007199254740993
-    └── items (array, 2 elements)
-        ├── [0] (object)
-        │   ├── sku (string): "A-100"
-        │   └── quantity (not accessed)
-        └── [1] (not accessed)
+    └── items (array, 1 element)
+        └── [0] (object)
+            └── sku (string): "A-100"
 ```
 
 1. **Root and order:** [`AsJSONObject`](../../documentation/json.md#jsonobject) views the document's root object. [`Get("order")`](../../documentation/json.md#jsonobject) selects its `order` member, and `AsJSONObject` views that member as an object.
 
 2. **Order ID:** `Get("id")` selects the ID from the order object. [`AsJSONScalar`](../../documentation/json.md#jsonscalar) and [`GetValue()`](../../documentation/json.md#jsonscalar) return `9007199254740993` as a `json.Number`.
 
-3. **Items array:** `Get("items")` selects the items from the order object. [`AsJSONArray`](../../documentation/json.md#jsonarray) views them as an array, and [`Len()`](../../documentation/json.md#jsonarray) returns `2`.
+3. **Items array:** `Get("items")` selects the items from the order object. [`AsJSONArray`](../../documentation/json.md#jsonarray) views them as an array, and [`Len()`](../../documentation/json.md#jsonarray) returns `1`.
 
 4. **First item's SKU:** [`Get(0)`](../../documentation/json.md#jsonarray) selects the first item. `AsJSONObject` views it as an object; `Get("sku")`, `AsJSONScalar`, and `GetValue()` return `A-100`.
 
