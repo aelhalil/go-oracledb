@@ -44,6 +44,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestOptionsFields verifies public option fields control encoding and materialization together.
@@ -239,6 +241,43 @@ func TestJSONScanRejectsInvalidSources(t *testing.T) {
 func TestNewJSONWithOptionsRejectsUnsupportedValue(t *testing.T) {
 	if _, err := NewJSONWithOptions(make(chan int), Options{}); err == nil {
 		t.Fatal("NewJSONWithOptions(chan) error = nil, want encoding error")
+	}
+}
+
+// TestNewJSONRejectsContainerCycles verifies cyclic maps and slices fail with
+// an encoding error while shared acyclic containers remain valid.
+func TestNewJSONRejectsContainerCycles(t *testing.T) {
+	mapCycle := map[string]any{}
+	mapCycle["self"] = mapCycle
+
+	sliceCycle := make([]any, 1)
+	sliceCycle[0] = sliceCycle
+
+	mixedCycle := map[string]any{}
+	mixedSlice := []any{mixedCycle}
+	mixedCycle["self"] = mixedSlice
+
+	for _, value := range []any{mapCycle, sliceCycle, mixedCycle} {
+		if _, err := NewJSON(value); err == nil {
+			t.Fatalf("NewJSON(%T cycle) error = nil, want encoding error", value)
+		} else if coded, ok := err.(interface{ ErrorCode() string }); !ok || coded.ErrorCode() != string(oracleErrors.OsonEncodingError) {
+			t.Fatalf("NewJSON(%T cycle) error = %v, want %s", value, err, oracleErrors.OsonEncodingError)
+		}
+	}
+
+	shared := map[string]any{"value": "ok"}
+	sharedSlice := []any{"ok"}
+	overlapping := make([]any, 2)
+	overlapping[0] = "ok"
+	overlapping[1] = overlapping[:1]
+	for _, value := range []any{
+		map[string]any{"left": shared, "right": shared},
+		[]any{sharedSlice, sharedSlice},
+		overlapping,
+	} {
+		if _, err := NewJSON(value); err != nil {
+			t.Fatalf("NewJSON(%T acyclic container) failed: %v", value, err)
+		}
 	}
 }
 

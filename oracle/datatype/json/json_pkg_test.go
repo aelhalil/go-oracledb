@@ -60,6 +60,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestJSONNilContainers", Categories: "unitary", Exclusive: false, Fn: TestJSONNilValues},
 	{Name: "TestJSONScanRejectsInvalidSources", Categories: "unitary", Exclusive: false, Fn: TestJSONScanRejectsInvalidSources},
 	{Name: "TestNewJSONWithOptionsRejectsUnsupportedValue", Categories: "unitary", Exclusive: false, Fn: TestNewJSONWithOptionsRejectsUnsupportedValue},
+	{Name: "TestNewJSONRejectsContainerCycles", Categories: "unitary", Exclusive: false, Fn: TestNewJSONRejectsContainerCycles},
 	{Name: "TestJSONSetOptionsSurvivesScan", Categories: "unitary", Exclusive: false, Fn: TestJSONSetOptionsSurvivesScan},
 	{Name: "TestJSONChildValueUsesInheritedOptions", Categories: "unitary", Exclusive: false, Fn: TestJSONChildValueUsesInheritedOptions},
 	{Name: "TestJSONMarshalJSON", Categories: "unitary", Exclusive: false, Fn: TestJSONMarshalJSON},

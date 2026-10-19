@@ -42,6 +42,7 @@ import (
 	stdjson "encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -75,7 +76,6 @@ func Encode(value any) (drvCommon.B1Array, error) {
 
 // EncodeWithOptions converts a supported Go value to OSON using opts.
 func EncodeWithOptions(value any, opts drvCommon.JSONConversionOptions) (drvCommon.B1Array, error) {
-
 	enc := newOsonEncoder()
 	enc.options = opts
 	doc, err := enc.encode(value)
@@ -102,9 +102,18 @@ func EncodeWithOptions(value any, opts drvCommon.JSONConversionOptions) (drvComm
 	return doc, nil
 }
 
+// containerIdentity identifies a supported container while checking the
+// current recursion path for cycles.
+type containerIdentity struct {
+	kind reflect.Kind
+	ptr  uintptr
+	len  int
+}
+
 // osonEncoder keeps the state needed to build one OSON document.
 type osonEncoder struct {
-	options drvCommon.JSONConversionOptions
+	options          drvCommon.JSONConversionOptions
+	activeContainers map[containerIdentity]struct{}
 	// Field-name dictionary for this document.
 	dict fieldNameDictionary
 
@@ -158,7 +167,8 @@ type fieldNameEntry struct {
 // to a single OSON document.
 func newOsonEncoder() *osonEncoder {
 	return &osonEncoder{
-		version: osonFormatMinVersion,
+		version:          osonFormatMinVersion,
+		activeContainers: make(map[containerIdentity]struct{}),
 		dict: fieldNameDictionary{
 			entriesByName: make(map[string]*fieldNameEntry),
 		},
@@ -342,6 +352,22 @@ func (enc *osonEncoder) collectFieldNames(value any) error {
 	if kind == drvCommon.KindScalar {
 		return nil
 	}
+
+	container := reflect.ValueOf(value)
+	if container.Len() == 0 {
+		return nil
+	}
+	identity := containerIdentity{kind: container.Kind(), ptr: container.Pointer()}
+	if kind == drvCommon.KindArray {
+		identity.len = container.Len()
+	}
+	if _, active := enc.activeContainers[identity]; active {
+		common.Odl.Debug("osonEncoder.collectFieldNames: failed", "reason", "container cycle detected", "goType", fmt.Sprintf("%T", value))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, nil)
+	}
+	enc.activeContainers[identity] = struct{}{}
+	defer delete(enc.activeContainers, identity)
+
 	if kind == drvCommon.KindArray {
 		for _, child := range value.([]any) {
 			if err := enc.collectFieldNames(child); err != nil {
