@@ -241,9 +241,9 @@ const (
 	// the wanted provider type
 	ProviderNotFound ErrorCode = "OGD-00206"
 
-	// JSONNilReceiver indicates a public oracle/json API was called on an uninitialized receiver.
-	JSONNilReceiver ErrorCode = "OGD-00300"
-	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/json does not accept.
+	// JSONUninitializedValue indicates a public oracle/datatype/json API was called on an uninitialized receiver.
+	JSONUninitializedValue ErrorCode = "OGD-00300"
+	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/datatype/json does not accept.
 	JSONScanTypeUnsupportedError ErrorCode = "OGD-00301"
 	// JSONArrayIndexOutOfRangeError indicates array element lookup used an invalid index.
 	JSONArrayIndexOutOfRangeError ErrorCode = "OGD-00302"
@@ -257,6 +257,8 @@ const (
 	JSONAccessError ErrorCode = "OGD-00305"
 	// JSONRenderingError indicates an Oracle JSON value could not be rendered as JSON text.
 	JSONRenderingError ErrorCode = "OGD-00306"
+	// JSONObjectKeyNotFoundError indicates an object lookup requested an absent key.
+	JSONObjectKeyNotFoundError ErrorCode = "OGD-00307"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error

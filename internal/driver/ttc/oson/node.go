@@ -125,7 +125,7 @@ func classifyJSONValue(value any) (drvCommon.Kind, error) {
 		return drvCommon.KindObject, nil
 	default:
 		common.Odl.Debug("classifyJSONValue: failed", "reason", "unsupported Go type", "type", fmt.Sprintf("%T", value))
-		return 0, common.NewOracleError(oracleErrors.InternalError, nil)
+		return 0, common.NewOracleError(oracleErrors.OsonEncodingError, nil)
 	}
 }
 

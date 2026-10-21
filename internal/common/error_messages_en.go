@@ -583,12 +583,12 @@ func initMessagesEn() {
 	// Comment:  Arg[0]: access descriptor.
 	message.SetString(language.English, string(oracleErrors.JSONAccessError), "invalid JSON access: %s")
 	// Document: No
-	// Cause:    A public oracle/json method was called on a nil receiver.
+	// Cause:    A public oracle/datatype/json method was called on an uninitialized value.
 	// Action:   Initialize the receiver before calling the method.
 	// Comment:  Arg[0]: method name.
-	message.SetString(language.English, string(oracleErrors.JSONNilReceiver), "JSON method %s called on nil receiver")
+	message.SetString(language.English, string(oracleErrors.JSONUninitializedValue), "JSON method %s called on an uninitialized value")
 	// Document: No
-	// Cause:    oracle/json Scan received a source type that is not supported by the current API.
+	// Cause:    oracle/datatype/json Scan received a source type that is not supported by the current API.
 	// Action:   Scan OSON bytes or use a supported source representation.
 	// Comment:  Arg[0]: source type.
 	message.SetString(language.English, string(oracleErrors.JSONScanTypeUnsupportedError), "JSON cannot scan %s")
@@ -607,6 +607,11 @@ func initMessagesEn() {
 	// Action:   Enable debug logging for rendering details.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.JSONRenderingError), "failed to render Oracle JSON value as JSON text")
+	// Document: No
+	// Cause:    A JSON object lookup requested a key that is absent.
+	// Action:   Check the object's keys before requesting a member.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.JSONObjectKeyNotFoundError), "JSON object key not found")
 	// Document: No
 	// Cause:    The connection provided is not an Oracle connection
 	// Action:   Create a connection using the Oracle driver and try again

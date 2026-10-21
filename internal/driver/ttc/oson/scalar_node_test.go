@@ -101,16 +101,48 @@ func TestDecodeScalarJSONRendering(t *testing.T) {
 			assertJSONEqual(t, text, sample.json)
 		})
 	}
-	doc, err := Encode(math.NaN())
-	if err != nil {
-		t.Fatalf("Encode(NaN) error = %v", err)
-	}
-	root, err := Parse(doc)
-	if err != nil {
-		t.Fatalf("Parse(NaN) error = %v", err)
-	}
-	if _, err := root.String(); err == nil {
-		t.Fatal("String(NaN) error = nil, want JSON rendering failure")
+	for _, test := range []struct {
+		value any
+		want  string
+	}{
+		{math.NaN(), `"Nan"`},
+		{math.Inf(1), `"Inf"`},
+		{math.Inf(-1), `"-Inf"`},
+		{float32(math.NaN()), `"Nan"`},
+		{float32(math.Inf(1)), `"Inf"`},
+		{float32(math.Inf(-1)), `"-Inf"`},
+	} {
+		doc, err := Encode(test.value)
+		if err != nil {
+			t.Fatalf("Encode(%v) error = %v", test.value, err)
+		}
+		root, err := Parse(doc)
+		if err != nil {
+			t.Fatalf("Parse() error = %v", err)
+		}
+		text, err := root.MarshalJSON()
+		if err != nil || string(text) != test.want {
+			t.Fatalf("MarshalJSON(%v) = (%s, %v), want %s", test.value, text, err, test.want)
+		}
+		rendered, err := root.String()
+		if err != nil || rendered != test.want {
+			t.Fatalf("String(%v) = (%s, %v), want %s", test.value, rendered, err, test.want)
+		}
+		for _, mode := range []drvCommon.JSONNumberMode{drvCommon.JSONNumberDefault, drvCommon.JSONNumberAsJSONNumber, drvCommon.JSONNumberAsFloat64} {
+			value, err := root.GetValue(drvCommon.JSONConversionOptions{NumberMode: mode})
+			if err != nil {
+				t.Fatalf("GetValue() error = %v", err)
+			}
+			got, ok := value.(float64)
+			if !ok {
+				t.Fatalf("GetValue(mode=%v) = %T, want float64", mode, value)
+			}
+			if test.want == `"Nan"` && !math.IsNaN(got) ||
+				test.want == `"Inf"` && !math.IsInf(got, 1) ||
+				test.want == `"-Inf"` && !math.IsInf(got, -1) {
+				t.Fatalf("GetValue(%v) = %v, want original nonfinite value", test.value, got)
+			}
+		}
 	}
 }
 
@@ -162,6 +194,9 @@ func TestDecodeMalformedScalarPayload(t *testing.T) {
 		{"truncated DECIMAL", drvCommon.B1Array{osonOpOracleDecimal, 3, 1}, oracleErrors.InternalError},
 		{"truncated string number", drvCommon.B1Array{osonOpStringNumber, 3, '1'}, oracleErrors.InternalError},
 		{"invalid string number", drvCommon.B1Array{osonOpStringNumber, 3, 'x', 'y', 'z'}, oracleErrors.InternalError},
+		{"empty string number", drvCommon.B1Array{osonOpStringNumber, 0}, oracleErrors.InternalError},
+		{"quoted string number", drvCommon.B1Array{osonOpStringNumber, 3, '"', '1', '"'}, oracleErrors.InternalError},
+		{"leading-zero string number", drvCommon.B1Array{osonOpStringNumber, 2, '0', '1'}, oracleErrors.InternalError},
 		{"truncated binary float", drvCommon.B1Array{osonOpBinaryFloat, 0, 0}, oracleErrors.InternalError},
 		{"truncated binary double", drvCommon.B1Array{osonOpBinaryDouble, 0, 0}, oracleErrors.InternalError},
 		{"truncated DATE", drvCommon.B1Array{osonOpDate, 1, 2}, oracleErrors.InternalError},
@@ -183,10 +218,11 @@ func TestDecodeMalformedScalarPayload(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			node := newScalarNodeAt(newOsonBuffer(test.doc), &osonHeader{}, 0, drvCommon.UB1(test.doc[0]))
-			_, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsFloat64})
-			if err == nil {
-				t.Fatal("Value() error = nil, want malformed-scalar error")
+			for _, mode := range []drvCommon.JSONNumberMode{drvCommon.JSONNumberDefault, drvCommon.JSONNumberAsJSONNumber, drvCommon.JSONNumberAsFloat64} {
+				_, err := node.Value(drvCommon.JSONConversionOptions{NumberMode: mode})
+				assertOracleErrorCode(t, err, test.code)
 			}
+			_, err := node.MarshalJSON()
 			assertOracleErrorCode(t, err, test.code)
 		})
 	}

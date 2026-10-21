@@ -331,9 +331,6 @@ func (obj *objectNode) GetValue(opts drvCommon.JSONConversionOptions) (any, erro
 
 // String implements the JSONNode interface.
 //
-// Parameters:
-//   - opts: JSON materialization options.
-//
 // Returns:
 //   - JSON text for the object.
 //
@@ -369,7 +366,12 @@ func (obj *objectNode) MarshalJSON() ([]byte, error) {
 		}
 	}
 
-	return json.Marshal(values)
+	text, err := json.Marshal(values)
+	if err != nil {
+		common.Odl.Debug("objNode.MarshalJSON: failed", "error", err)
+		return nil, common.NewOracleError(oracleErrors.JSONRenderingError, err)
+	}
+	return text, nil
 }
 
 // Get implements the JSONObjectNode interface.
@@ -379,19 +381,20 @@ func (obj *objectNode) MarshalJSON() ([]byte, error) {
 //
 // Returns:
 //   - child node or nil.
-//   - key resolving success
+//   - error for a missing key or child node construction failure.
 //
 // Errors:
-//   - none.
-func (obj *objectNode) Get(key string) (drvCommon.JSONNode, bool) {
+//   - missing key or child node construction failure.
+func (obj *objectNode) Get(key string) (drvCommon.JSONNode, error) {
 	childOffset, ok := obj.childrenOffsets[key]
 	if !ok {
-		return nil, false
+		common.Odl.Debug("objectNode.Get: failed", "reason", "key not found", "offset", obj.offset)
+		return nil, common.NewOracleError(oracleErrors.JSONObjectKeyNotFoundError, nil)
 	}
 	child, err := newNodeAt(obj.buf, obj.header, childOffset)
 	if err != nil {
 		common.Odl.Debug("objectNode.Get: failed", "error", err, "offset", obj.offset, "childOffset", childOffset)
-		return nil, false
+		return nil, err
 	}
 	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
 		common.Odl.Finest("objectNode.Get: completed",
@@ -399,7 +402,7 @@ func (obj *objectNode) Get(key string) (drvCommon.JSONNode, bool) {
 			"childOffset", childOffset,
 			"childKind", child.Kind())
 	}
-	return child, true
+	return child, nil
 }
 
 // Len implements the JSONObjectNode interface.

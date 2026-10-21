@@ -127,9 +127,9 @@ Use `AsJSONObject()` to access an object.
 | Method | Description |
 | --- | --- |
 | `Keys() []string` | Returns member names in unspecified order. |
-| `Get(key string) (JSON, bool)` | Returns a child `JSON` and whether the member exists. Keys are literal names. |
+| `Get(key string) (JSON, error)` | Returns a child `JSON`, `JSONObjectKeyNotFoundError` for an absent member, or an error constructing the child node. Keys are literal names. |
 | `GetValue() (map[string]any, error)` | Decodes the entire object as `map[string]any`. |
-| `String() string` | Returns the corresponding JSON text. |
+| `String() string` | Returns JSON text (returns a placeholder on failure like unsupported type). |
 
 ```go
 object, err := doc.AsJSONObject()
@@ -143,9 +143,9 @@ Use `AsJSONArray()` to access an array.
 | Method | Description |
 | --- | --- |
 | `Len() int` | Returns the number of elements. |
-| `Get(i int) (JSON, error)` | Returns a child `JSON` at a zero-based index, or an error if the index is out of range. |
+| `Get(i int) (JSON, error)` | Returns a child `JSON` at a zero-based index, or an error if the index is out of range or the child node cannot be constructed. |
 | `GetValue() ([]any, error)` | Decodes the entire array as `[]any`. |
-| `String() string` | Returns the corresponding JSON text. |
+| `String() string` | Returns JSON text (returns a placeholder on failure like unsupported type). |
 
 ```go
 array, err := doc.AsJSONArray()
@@ -159,7 +159,7 @@ Use `AsJSONScalar()` to access a scalar, including JSON null.
 | Method | Description |
 | --- | --- |
 | `GetValue() (any, error)` | Decodes the scalar as its corresponding Go value; JSON null becomes `nil`. |
-| `String() string` | Returns the corresponding JSON text. |
+| `String() string` | Returns JSON text (returns a placeholder on failure like unsupported type). |
 
 ```go
 scalar, err := doc.AsJSONScalar()
@@ -206,10 +206,10 @@ fetching it:
 | `float32` | `BINARY_FLOAT` | `float64` |
 | `float64` | `BINARY_DOUBLE` | `float64` |
 
-If you want to change the document-wide number-decoding behavior and use one
-unified Go type for every fetched number, set `Options.NumberMode` to
+To change the document-wide number-decoding behavior, set `Options.NumberMode` to
 `NumberAsJSONNumber` for `stdjson.Number` values or `NumberAsFloat64` for
 `float64` values. Leave it as `NumberDefault` to use the mapping above.
+Note: special binary float values like `NaN` remain `float64` in every mode.
 
 See [Control number representation](#control-number-representation) for how to set the option.
 
@@ -229,8 +229,8 @@ same Go representation.
 
 | Option | Go representation |
 | --- | --- |
-| `NumberDefault` (default) | `int32` or `int64` for compact signed integers; `stdjson.Number` for Oracle NUMBER, Decimal128, and string numbers; `float64` for binary floats. |
-| `NumberAsJSONNumber` | `stdjson.Number` for all numbers. |
+| `NumberDefault` (default) | `int32` or `int64` for compact signed integers; `stdjson.Number` for Oracle NUMBER and string numbers; `float64` for binary floats. |
+| `NumberAsJSONNumber` | `stdjson.Number` for finite numbers; `float64` for NaN and ±Inf. |
 | `NumberAsFloat64` | `float64` for all numbers. |
 
 Converting to `float64` can round large integers and decimal values.
@@ -243,7 +243,7 @@ For example, a row contains this JSON:
 {"score": 9007199254740993}
 ```
 
-Set `NumberAsJSONNumber` when every number should be returned as
+Set `NumberAsJSONNumber` when every finite number should be returned as
 `stdjson.Number` (or set `NumberAsFloat64` when every number should be a
 `float64`):
 
@@ -253,10 +253,12 @@ doc.SetOptions(ojson.Options{
 	NumberMode: ojson.NumberAsJSONNumber,
 })
 
-_ := db.QueryRowContext(ctx,
+if err := db.QueryRowContext(ctx,
 	"SELECT doc FROM json_documents WHERE id = :1", 1,
-).Scan(&doc)
-value, _ := doc.GetValue()
+).Scan(&doc); err != nil {
+	return err
+}
+value, err := doc.GetValue()
 ```
 
 Expected `value`:
@@ -320,8 +322,7 @@ returns a sentinel instead of JSON text:
 - `"<JSON: uninitialized>"` (same pattern for the other types) for the zero
   value, such as a `JSON` that was never fetched or bound.
 - `"<JSON: rendering failed>"` when rendering fails, for example when the
-  document contains an unsupported OSON scalar (see below) or a non-finite
-  `BINARY_FLOAT`/`BINARY_DOUBLE` value: NaN and ±Inf have no JSON text form.
+  document contains an unsupported OSON scalar (see below) or a malformed payload.
 
 Rendering a container fails as a whole if any child in that subtree cannot be
 rendered. Use `json.Marshal` when the error matters.
@@ -329,7 +330,7 @@ rendered. Use `json.Marshal` when the error matters.
 ### Unsupported scalar types
 
 The driver decodes the JSON scalars (null, boolean, string, numbers including
-Oracle NUMBER, Decimal128, `BINARY_FLOAT`, and `BINARY_DOUBLE`) and the
+Oracle NUMBER, `BINARY_FLOAT`, and `BINARY_DOUBLE`) and the
 SQL/JSON scalar extensions `DATE`, `TIMESTAMP`, `TIMESTAMP WITH TIME ZONE`,
 `BINARY`/`RAW`, `ID`, `INTERVAL YEAR TO MONTH`, and `INTERVAL DAY TO SECOND`.
 
@@ -348,6 +349,14 @@ affected subtree with `String()` returns `"<JSON: rendering failed>"`:
   every width, `float32`, `float64`, `[]byte`, `time.Time`, `stdjson.Number`,
   `map[string]any`, and `[]any`. Therefore, other types like structs, pointers, named types,
   `[]string`, maps with non-`string` keys will fail with an encoding error.
+
+### Nil values
+
+`NewJSON(nil)` creates JSON null. Typed nil values retain their Go kind:
+`map[string]any(nil)` creates `{}`, `[]any(nil)` creates `[]`, and `[]byte(nil)`
+creates an empty binary scalar that renders as `""`. Passing `nil` directly as a
+SQL bind parameter creates SQL NULL. Use `sql.Null[ojson.JSON]` to distinguish
+SQL NULL from JSON null when fetching.
 
 ### Decoded time zone
 

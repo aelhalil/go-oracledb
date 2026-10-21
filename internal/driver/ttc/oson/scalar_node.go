@@ -41,6 +41,7 @@ package oson
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -126,9 +127,6 @@ func (scalar *scalarNode) GetValue(opt drvCommon.JSONConversionOptions) (any, er
 
 // String implements the JSONNode interface.
 //
-// Parameters:
-//   - opts: JSON materialization option.
-//
 // Returns:
 //   - JSON text for the scalar value.
 //
@@ -157,25 +155,35 @@ func (scalar *scalarNode) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	switch value := value.(type) {
-	case json.Number:
-		return []byte(value), nil
+	switch scalarValue := value.(type) {
+	case float64:
+		// Nonfinite binary numbers use Oracle's JSON string spellings.
+		switch {
+		case math.IsNaN(scalarValue):
+			value = "Nan"
+		case math.IsInf(scalarValue, 1):
+			value = "Inf"
+		case math.IsInf(scalarValue, -1):
+			value = "-Inf"
+		}
 	case time.Time:
 		switch scalar.opcode {
 		case osonOpDate, osonOpTimestamp, osonOpTimestamp7:
 			// DATE and TIMESTAMP do not carry a timezone in their OSON payload.
 			// Avoid time.Time's default JSON form, which adds the local offset.
-			return json.Marshal(value.Format("2006-01-02T15:04:05.999999999"))
-		default:
-			return json.Marshal(value)
+			value = scalarValue.Format("2006-01-02T15:04:05.999999999")
 		}
 	case []byte:
 		// OSON binary values render as hexadecimal JSON strings rather than
 		// encoding/json's default base64 strings.
-		return json.Marshal(fmt.Sprintf("%X", value))
-	default:
-		return json.Marshal(value)
+		value = fmt.Sprintf("%X", scalarValue)
 	}
+	text, err := json.Marshal(value)
+	if err != nil {
+		common.Odl.Debug("scalarNode.MarshalJSON: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
+		return nil, common.NewOracleError(oracleErrors.JSONRenderingError, err)
+	}
+	return text, nil
 }
 
 // Value implements the JSONScalarNode interface.
@@ -426,6 +434,10 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		if err != nil {
 			return nil, err
 		}
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			common.Odl.Debug("decodeScalarValue: preserving nonfinite binary number as float64", "offset", offset, "opcode", opcode)
+			return float64(value), nil
+		}
 		if opts.NumberMode == drvCommon.JSONNumberAsJSONNumber {
 			return json.Number(strconv.FormatFloat(float64(value), 'g', -1, 32)), nil
 		}
@@ -447,6 +459,10 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 		value, err := converters.DecodeBinaryDouble(raw)
 		if err != nil {
 			return nil, err
+		}
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			common.Odl.Debug("decodeScalarValue: preserving nonfinite binary number as float64", "offset", offset, "opcode", opcode)
+			return value, nil
 		}
 		if opts.NumberMode == drvCommon.JSONNumberAsJSONNumber {
 			return json.Number(strconv.FormatFloat(value, 'g', -1, 64)), nil
@@ -595,8 +611,8 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 	}
 }
 
-// decodeSignedIntegerValue decodes an SB4 or SB8 Oracle NUMBER and enforces the
-// signed range promised by its OSON opcode family.
+// decodeSignedIntegerValue decodes an SB4 or SB8 Oracle NUMBER using the
+// signed integer type associated with its OSON opcode family.
 func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts drvCommon.JSONConversionOptions) (any, error) {
 	text, err := converters.DecodeExactDecimalAsString(payload)
 	if err != nil {
@@ -636,6 +652,14 @@ func decodeOracleNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONConve
 // decodeStringNumberValue decodes Oracle numbers that are represented as strings.
 func decodeStringNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONConversionOptions) (any, error) {
 	text := string(payload)
+	if text == "" {
+		common.Odl.Debug("decodeStringNumberValue: failed", "reason", "empty string NUMBER text")
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+	}
+	if _, err := json.Marshal(json.Number(text)); err != nil {
+		common.Odl.Debug("decodeStringNumberValue: failed", "reason", "invalid string NUMBER text", "length", len(text))
+		return nil, common.NewOracleError(oracleErrors.InternalError, err)
+	}
 	if opts.NumberMode != drvCommon.JSONNumberAsFloat64 {
 		return json.Number(text), nil
 	}

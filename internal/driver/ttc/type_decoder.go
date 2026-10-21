@@ -487,7 +487,7 @@ func DecodeClob(columnContext columnContext, data driverCommon.B1Array) (driver.
 }
 
 /*
-DecodeJson returns the underlying JSON payload as a driver.Value.
+DecodeJSON returns the underlying JSON payload as a driver.Value.
 
 Parameters:
   - columnContext: _
@@ -495,7 +495,7 @@ Parameters:
 
 Returns:
   - driver.Value: raw OSON bytes.
-  - error: an error if the payload is not OSON.
+  - error: always nil.
 
 Errors:
   - None

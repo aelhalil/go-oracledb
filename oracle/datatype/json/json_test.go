@@ -41,6 +41,7 @@ package json
 import (
 	"bytes"
 	stdjson "encoding/json"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -72,9 +73,9 @@ func TestOptionsFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AsJSONObject() failed: %v", err)
 	}
-	child, ok := object.Get("time")
-	if !ok {
-		t.Fatal("Get(time) = false")
+	child, err := object.Get("time")
+	if err != nil {
+		t.Fatalf("Get() failed: %v", err)
 	}
 	if got := child.String(); got != `"2025-02-03T04:05:06"` {
 		t.Fatalf("date = %q, want whole seconds without time zone", got)
@@ -103,9 +104,9 @@ func TestJSONMarshalJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AsJSONObject() failed: %v", err)
 	}
-	items, ok := object.Get("items")
-	if !ok {
-		t.Fatal("JSONObject.Get(items) = false")
+	items, err := object.Get("items")
+	if err != nil {
+		t.Fatalf("Get() failed: %v", err)
 	}
 	array, err := items.AsJSONArray()
 	if err != nil {
@@ -142,6 +143,56 @@ func TestJSONMarshalJSON(t *testing.T) {
 		})
 	}
 
+	for _, test := range []struct {
+		value any
+		want  string
+	}{
+		{float32(1.25), `1.25`},
+		{float64(1.25), `1.25`},
+		{math.NaN(), `"Nan"`},
+		{math.Inf(1), `"Inf"`},
+		{math.Inf(-1), `"-Inf"`},
+		{float32(math.NaN()), `"Nan"`},
+		{float32(math.Inf(1)), `"Inf"`},
+		{float32(math.Inf(-1)), `"-Inf"`},
+		{"Inf", `"Inf"`},
+	} {
+		doc, err := NewJSONWithOptions(test.value, Options{NumberMode: NumberAsJSONNumber})
+		if err != nil {
+			t.Fatalf("NewJSON(%v) failed: %v", test.value, err)
+		}
+		value, err := doc.GetValue()
+		if err != nil {
+			t.Fatalf("GetValue() failed: %v", err)
+		}
+		switch test.value.(type) {
+		case float32, float64:
+			if test.want == "1.25" {
+				if value != stdjson.Number("1.25") {
+					t.Fatalf("finite value = %T %v, want json.Number(1.25)", value, value)
+				}
+				break
+			}
+			number, ok := value.(float64)
+			if !ok {
+				t.Fatalf("special value = %T, want float64", value)
+			}
+			if test.want == `"Nan"` && !math.IsNaN(number) || test.want == `"Inf"` && !math.IsInf(number, 1) || test.want == `"-Inf"` && !math.IsInf(number, -1) {
+				t.Fatalf("special value = %v, want %v", number, test.value)
+			}
+			if _, err := stdjson.Marshal(value); err == nil {
+				t.Fatal("json.Marshal(extracted special) succeeded, want unsupported-value error")
+			}
+		}
+		got, err := stdjson.Marshal(doc)
+		if err != nil || string(got) != test.want {
+			t.Fatalf("json.Marshal(%v) = (%s, %v), want %s", test.value, got, err, test.want)
+		}
+		if got := doc.String(); got != test.want {
+			t.Fatalf("String(%v) = %s, want %s", test.value, got, test.want)
+		}
+	}
+
 	zeroValues := []struct {
 		name  string
 		value any
@@ -176,9 +227,11 @@ func TestJSONUnmarshalJSON(t *testing.T) {
 		t.Fatalf("json.Marshal() = %s, want %s", output, input)
 	}
 
-	if err := stdjson.Unmarshal([]byte(`{"invalid":`), &doc); err == nil {
-		t.Fatal("json.Unmarshal(invalid JSON) error = nil, want error")
+	err = doc.UnmarshalJSON([]byte(`{"invalid":`))
+	if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.OsonEncodingError) {
+		t.Fatalf("UnmarshalJSON() error = %v, want OsonEncodingError", err)
 	}
+
 	output, err = stdjson.Marshal(doc)
 	if err != nil {
 		t.Fatalf("json.Marshal() after invalid input failed: %v", err)
@@ -321,9 +374,9 @@ func TestJSONChildValueUsesInheritedOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AsJSONObject() failed: %v", err)
 	}
-	child, ok := object.Get("number")
-	if !ok {
-		t.Fatal("JSONObject.Get(number) = false, want true")
+	child, err := object.Get("number")
+	if err != nil {
+		t.Fatalf("Get() failed: %v", err)
 	}
 	value, err := child.Value()
 	if err != nil {
@@ -355,6 +408,8 @@ func TestJSONZeroValues(t *testing.T) {
 	}
 	if _, err := doc.GetValue(); err == nil {
 		t.Fatal("JSON.GetValue() error = nil, want error")
+	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.JSONUninitializedValue) {
+		t.Fatalf("GetValue() error = %v, want JSONUninitializedValue", err)
 	}
 	if _, err := doc.AsJSONObject(); err == nil {
 		t.Fatal("JSON.AsJSONObject() error = nil, want error")
@@ -367,8 +422,8 @@ func TestJSONZeroValues(t *testing.T) {
 	if object.Keys() != nil || object.String() != "<JSONObject: uninitialized>" {
 		t.Fatal("zero JSONObject did not return its documented values")
 	}
-	if _, ok := object.Get("missing"); ok {
-		t.Fatal("zero JSONObject.Get() = true, want false")
+	if _, err := object.Get("missing"); err == nil {
+		t.Fatal("zero JSONObject.Get() error = nil, want error")
 	}
 	if _, err := object.GetValue(); err == nil {
 		t.Fatal("zero JSONObject.GetValue() error = nil, want error")
@@ -405,8 +460,10 @@ func TestJSONObjectAccessors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AsJSONObject() failed: %v", err)
 	}
-	if _, ok := object.Get("missing"); ok {
-		t.Fatal("JSONObject.Get(missing) = true, want false")
+	if _, err := object.Get("missing"); err == nil {
+		t.Fatal("JSONObject.Get(missing) error = nil, want error")
+	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.JSONObjectKeyNotFoundError) {
+		t.Fatalf("Get(missing) error = %v, want JSONObjectKeyNotFoundError", err)
 	}
 	if len(object.Keys()) != 1 {
 		t.Fatalf("JSONObject.Keys() = %v, want one key", object.Keys())
@@ -522,9 +579,9 @@ func TestJSONScanCopiesSourceBytes(t *testing.T) {
 		t.Fatalf("AsJSONObject() failed: %v", err)
 	}
 
-	nameJSON, ok := obj.Get("name")
-	if !ok {
-		t.Fatal(`field "name" missing`)
+	nameJSON, err := obj.Get("name")
+	if err != nil {
+		t.Fatalf("Get() failed: %v", err)
 	}
 
 	nameScalar, err := nameJSON.AsJSONScalar()

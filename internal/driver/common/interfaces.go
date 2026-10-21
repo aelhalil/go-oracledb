@@ -121,6 +121,7 @@ const (
 	// float/double values as float64.
 	JSONNumberDefault JSONNumberMode = iota
 	// JSONNumberAsJSONNumber returns finite values as encoding/json.Number.
+	// Special binary floating-point values (NaN and ±Inf) remain float64.
 	JSONNumberAsJSONNumber
 	// JSONNumberAsFloat64 converts numbers to float64.
 	JSONNumberAsFloat64
@@ -156,10 +157,10 @@ type JSONConversionOptions struct {
 //
 // Decoding is lazy: creating a node reads only the OSON bytes needed to identify
 // that node and locate its direct children. It does not decode the child values.
-// Get creates another lazy node for one child. GetValue, Value, and
-// String converts values to JSON text and, for a container, decodes the
-// complete subtree. This lets callers inspect a large document without
-// converting parts they do not need.
+// Get creates another lazy node for one child. GetValue and Value materialize
+// Go values; String and MarshalJSON render JSON text. These operations decode
+// the complete subtree for a container. This lets callers inspect a large
+// document without converting parts they do not need.
 //
 // Implementations must propagate the requested JSONConversionOptions through the entire
 // subtree and return an error if any selected child cannot be decoded. The
@@ -203,9 +204,9 @@ type JSONNode interface {
 type JSONObjectNode interface {
 	JSONNode
 
-	// Get returns the child node named by key. The result is false when key is
+	// Get returns the child node named by key, or an error when the key is
 	// absent or its node cannot be constructed.
-	Get(key string) (JSONNode, bool)
+	Get(key string) (JSONNode, error)
 
 	// Len returns the number of object members. Each member is one field name and
 	// its associated child value.
@@ -228,9 +229,9 @@ type JSONObjectNode interface {
 type JSONArrayNode interface {
 	JSONNode
 
-	// Get returns the child node at the zero-based index. The result is false
-	// when index is out of range or its node cannot be constructed.
-	Get(index int) (JSONNode, bool)
+	// Get returns the child node at the zero-based index, or an error when
+	// index is out of range or its node cannot be constructed.
+	Get(index int) (JSONNode, error)
 
 	// Len returns the number of array elements.
 	Len() int

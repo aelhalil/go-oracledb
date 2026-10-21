@@ -170,8 +170,16 @@ func TestHeaderRejectsUpdateCaps(t *testing.T) {
 }
 
 // TestHeaderRejectsOutOfRangeUpdateMappings verifies the header rejects update
-// mappings pointing outside the tree segment.
+// mappings pointing outside the tree segment and missing overflow mappings.
 func TestHeaderRejectsOutOfRangeUpdateMappings(t *testing.T) {
+	t.Run("missing overflow mapping", func(t *testing.T) {
+		header := &osonHeader{
+			treeSegmentStartOffset: 20,
+		}
+		_, err := header.resolveOverflowOffset(25)
+		assertOracleErrorCode(t, err, oracleErrors.InternalError)
+	})
+
 	tests := []struct {
 		name   string
 		sample osonSample

@@ -146,9 +146,6 @@ func (array *arrayNode) GetValue(opts drvCommon.JSONConversionOptions) (any, err
 
 // String implements the JSONNode interface.
 //
-// Parameters:
-//   - opts: JSON materialization options.
-//
 // Returns:
 //   - JSON text for the array.
 //
@@ -184,7 +181,12 @@ func (array *arrayNode) MarshalJSON() ([]byte, error) {
 		}
 	}
 
-	return json.Marshal(values)
+	text, err := json.Marshal(values)
+	if err != nil {
+		common.Odl.Debug("arrayNode.MarshalJSON: failed", "error", err)
+		return nil, common.NewOracleError(oracleErrors.JSONRenderingError, err)
+	}
+	return text, nil
 }
 
 // Get implements the JSONArrayNode interface.
@@ -193,19 +195,20 @@ func (array *arrayNode) MarshalJSON() ([]byte, error) {
 //   - index: zero-based array element index.
 //
 // Returns:
-//   - child node and true when index resolves successfully.
+//   - child node and nil on success.
 //
 // Errors:
-//   - encoded as false for an invalid index or malformed child node.
-func (array *arrayNode) Get(index int) (drvCommon.JSONNode, bool) {
+//   - index out of range or child node construction failure.
+func (array *arrayNode) Get(index int) (drvCommon.JSONNode, error) {
 	if index < 0 || index >= len(array.childOffsets) {
-		return nil, false
+		common.Odl.Debug("arrayNode.Get: failed", "reason", "index out of range", "index", index, "length", len(array.childOffsets))
+		return nil, common.NewOracleError(oracleErrors.JSONArrayIndexOutOfRangeError, nil, index)
 	}
 
 	childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[index])
 	if err != nil {
 		common.Odl.Debug("arrayNode.Get: failed", "error", err, "offset", array.offset, "index", index, "childOffset", array.childOffsets[index])
-		return nil, false
+		return nil, err
 	}
 	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
 		common.Odl.Finest("arrayNode.Get: completed",
@@ -214,7 +217,7 @@ func (array *arrayNode) Get(index int) (drvCommon.JSONNode, bool) {
 			"childOffset", array.childOffsets[index],
 			"childKind", childNode.Kind())
 	}
-	return childNode, true
+	return childNode, nil
 }
 
 // Len implements the JSONArrayNode interface.
@@ -244,8 +247,6 @@ func (array *arrayNode) Len() int {
 func (array *arrayNode) Value(opts drvCommon.JSONConversionOptions) ([]any, error) {
 	elementValues := make([]any, len(array.childOffsets))
 	for elementIndex := range array.childOffsets {
-		// Get intentionally returns only a boolean for the public lazy-node API;
-		// materialization must retain the parsing error for its caller.
 		childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[elementIndex])
 		if err != nil {
 			common.Odl.Debug("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex, "childOffset", array.childOffsets[elementIndex])

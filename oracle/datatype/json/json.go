@@ -139,7 +139,8 @@ type JSON struct {
 }
 
 // NewJSON encodes value as an OSON document using default options. Passing nil
-// creates JSON null.
+// creates JSON null. Typed nil maps and slices create empty objects and arrays;
+// a nil []byte creates an empty binary scalar.
 func NewJSON(value any) (JSON, error) {
 	return NewJSONWithOptions(value, Options{})
 }
@@ -159,7 +160,9 @@ func NewJSONWithOptions(value any, opts Options) (JSON, error) {
 	return JSON{node: node, document: document, options: opts}, nil
 }
 
-// SetOptions replaces the options associated with jz.
+// SetOptions replaces all options associated with jz without re-encoding its
+// document. Previously obtained views retain their options. Future views inherit
+// the new options. NumberMode does not affect MarshalJSON or String.
 func (jz *JSON) SetOptions(opts Options) {
 	jz.options = opts
 }
@@ -171,7 +174,7 @@ func (jz *JSON) UnmarshalJSON(data []byte) error {
 	var raw json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		common.Odl.Debug("JSON.UnmarshalJSON: failed", "reason", "invalid JSON text", "error", err)
-		return err
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -179,7 +182,7 @@ func (jz *JSON) UnmarshalJSON(data []byte) error {
 	var value any
 	if err := decoder.Decode(&value); err != nil {
 		common.Odl.Debug("JSON.UnmarshalJSON: failed", "reason", "decode JSON text", "error", err)
-		return err
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 
 	doc, err := NewJSONWithOptions(value, jz.options)
@@ -231,7 +234,7 @@ func (jz *JSON) Scan(src any) error {
 func (jz JSON) Value() (driver.Value, error) {
 	if jz.node == nil {
 		common.Odl.Debug("JSON.Value: failed", "reason", "uninitialized JSON value")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Value")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "Value")
 	}
 	if jz.document != nil {
 		return append([]byte(nil), jz.document...), nil
@@ -256,7 +259,7 @@ func (jz JSON) Value() (driver.Value, error) {
 func (jz JSON) Kind() (JSONKind, error) {
 	if jz.node == nil {
 		common.Odl.Debug("JSON.Kind: failed", "reason", "uninitialized JSON value")
-		return 0, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Kind")
+		return 0, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "Kind")
 	}
 
 	return jz.node.Kind(), nil
@@ -299,7 +302,7 @@ func (jz JSON) AsJSONScalar() (JSONScalar, error) {
 func (jz JSON) GetValue() (any, error) {
 	if jz.node == nil {
 		common.Odl.Debug("JSON.GetValue: failed", "reason", "uninitialized JSON value")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "GetValue")
 	}
 	return jz.node.GetValue(drvCommon.JSONConversionOptions(jz.options))
 }
@@ -309,7 +312,7 @@ func (jz JSON) GetValue() (any, error) {
 func (jz JSON) MarshalJSON() ([]byte, error) {
 	if jz.node == nil {
 		common.Odl.Debug("JSON.MarshalJSON: failed", "reason", "uninitialized JSON value")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "MarshalJSON")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "MarshalJSON")
 	}
 	return jz.node.MarshalJSON()
 }
@@ -340,7 +343,7 @@ type JSONObject struct {
 func (obj JSONObject) GetValue() (map[string]any, error) {
 	if obj.node == nil {
 		common.Odl.Debug("JSONObject.GetValue: failed", "reason", "uninitialized object view")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "GetValue")
 	}
 	return obj.node.Value(drvCommon.JSONConversionOptions(obj.options))
 }
@@ -350,7 +353,7 @@ func (obj JSONObject) GetValue() (map[string]any, error) {
 func (obj JSONObject) MarshalJSON() ([]byte, error) {
 	if obj.node == nil {
 		common.Odl.Debug("JSONObject.MarshalJSON: failed", "reason", "uninitialized object view")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "MarshalJSON")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "MarshalJSON")
 	}
 	return obj.node.MarshalJSON()
 }
@@ -364,17 +367,19 @@ func (obj JSONObject) Keys() []string {
 	return obj.node.Keys()
 }
 
-// Get returns a lazy child JSON for key and true if it exists, or a zero JSON
-// and false otherwise.
-func (obj JSONObject) Get(key string) (JSON, bool) {
-	if obj.node != nil {
-		node, ok := obj.node.Get(key)
-		if !ok {
-			return JSON{}, false
-		}
-		return JSON{node: node, options: obj.options}, true
+// Get returns a lazy child JSON for key. It returns JSONObjectKeyNotFoundError
+// if key is absent, or an error if the child node cannot be constructed. Scalar
+// payload errors may be reported later by GetValue or MarshalJSON.
+func (obj JSONObject) Get(key string) (JSON, error) {
+	if obj.node == nil {
+		common.Odl.Debug("JSONObject.Get: failed", "reason", "uninitialized object view")
+		return JSON{}, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "Get")
 	}
-	return JSON{}, false
+	node, err := obj.node.Get(key)
+	if err != nil {
+		return JSON{}, err
+	}
+	return JSON{node: node, options: obj.options}, nil
 }
 
 // String implements fmt.Stringer, returning JSON text for display.
@@ -412,7 +417,7 @@ func (arr JSONArray) Len() int {
 func (arr JSONArray) GetValue() ([]any, error) {
 	if arr.node == nil {
 		common.Odl.Debug("JSONArray.GetValue: failed", "reason", "uninitialized array view")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "GetValue")
 	}
 	return arr.node.Value(drvCommon.JSONConversionOptions(arr.options))
 }
@@ -422,23 +427,23 @@ func (arr JSONArray) GetValue() ([]any, error) {
 func (arr JSONArray) MarshalJSON() ([]byte, error) {
 	if arr.node == nil {
 		common.Odl.Debug("JSONArray.MarshalJSON: failed", "reason", "uninitialized array view")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "MarshalJSON")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "MarshalJSON")
 	}
 	return arr.node.MarshalJSON()
 }
 
 // Get returns the lazy child JSON at index i. It returns an error if i is
-// outside [0, Len()).
+// outside [0, Len()), arr is uninitialized, or the child node cannot be
+// constructed. Scalar payload errors may be reported later by GetValue or MarshalJSON.
 func (arr JSONArray) Get(i int) (JSON, error) {
 	if arr.node == nil {
 		common.Odl.Debug("JSONArray.Get: failed", "reason", "uninitialized array view", "index", i)
-		return JSON{}, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Get")
+		return JSON{}, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "Get")
 	}
 
-	node, ok := arr.node.Get(i)
-	if !ok {
-		common.Odl.Debug("JSONArray.Get: failed", "reason", "index out of range", "index", i, "length", arr.node.Len())
-		return JSON{}, common.NewOracleError(oracleErrors.JSONArrayIndexOutOfRangeError, nil, i)
+	node, err := arr.node.Get(i)
+	if err != nil {
+		return JSON{}, err
 	}
 	return JSON{node: node, options: arr.options}, nil
 }
@@ -470,7 +475,7 @@ type JSONScalar struct {
 func (scalar JSONScalar) GetValue() (any, error) {
 	if scalar.node == nil {
 		common.Odl.Debug("JSONScalar.GetValue: failed", "reason", "uninitialized scalar view")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "GetValue")
 	}
 	return scalar.node.Value(drvCommon.JSONConversionOptions(scalar.options))
 }
@@ -480,7 +485,7 @@ func (scalar JSONScalar) GetValue() (any, error) {
 func (scalar JSONScalar) MarshalJSON() ([]byte, error) {
 	if scalar.node == nil {
 		common.Odl.Debug("JSONScalar.MarshalJSON: failed", "reason", "uninitialized scalar view")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "MarshalJSON")
+		return nil, common.NewOracleError(oracleErrors.JSONUninitializedValue, nil, "MarshalJSON")
 	}
 	return scalar.node.MarshalJSON()
 }

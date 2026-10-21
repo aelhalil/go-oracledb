@@ -48,6 +48,7 @@ import (
 	"time"
 
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestEncodeSignedIntegerWidths verifies signed integers use compact opcodes
@@ -378,11 +379,17 @@ func TestEncodeRejectsUnsupportedValues(t *testing.T) {
 		"unsupported Go value":     struct{}{},
 		"unsupported nested value": map[string]any{"bad": []any{struct{}{}}},
 		"invalid JSON number":      json.Number("not-a-number"),
+		"NaN JSON number":          json.Number("NaN"),
+		"positive infinity number": json.Number("+Inf"),
+		"negative infinity number": json.Number("-Inf"),
+		"quoted JSON number":       json.Number(`"123"`),
+		"empty JSON number":        json.Number(""),
+		"leading zero":             json.Number("01"),
+		"null number":              json.Number("null"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := Encode(value); err == nil {
-				t.Fatal("Encode() error = nil, want OSON encoding error")
-			}
+			_, err := Encode(value)
+			assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
 		})
 	}
 }

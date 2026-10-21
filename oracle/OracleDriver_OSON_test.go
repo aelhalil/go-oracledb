@@ -38,6 +38,7 @@ import (
 	"context"
 	"database/sql"
 	stdjson "encoding/json"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -152,6 +153,50 @@ func TestDriver_OSON_Scalar(t *testing.T) {
 	if !reflect.DeepEqual(value, want) {
 		t.Fatalf("binary JSON scalar = %#v, want %#v", value, want)
 	}
+	for index, test := range []struct {
+		value any
+		want  string
+	}{
+		{math.NaN(), `"Nan"`},
+		{math.Inf(1), `"Inf"`},
+		{math.Inf(-1), `"-Inf"`},
+		{float32(math.NaN()), `"Nan"`},
+		{float32(math.Inf(1)), `"Inf"`},
+		{float32(math.Inf(-1)), `"-Inf"`},
+	} {
+		doc, err := ojson.NewJSON(test.value)
+		if err != nil {
+			t.Fatalf("create nonfinite scalar failed: %v", err)
+		}
+		id := index + 2
+		if _, err = db.ExecContext(ctx, "insert into "+table+" (id, doc) values (:1, :2)", id, doc); err != nil {
+			t.Fatalf("insert nonfinite scalar failed: %v", err)
+		}
+		var fetched ojson.JSON
+		if err = db.QueryRowContext(ctx, "select doc from "+table+" where id = :1", id).Scan(&fetched); err != nil {
+			t.Fatalf("fetch nonfinite scalar failed: %v", err)
+		}
+		for _, mode := range []ojson.NumberMode{ojson.NumberDefault, ojson.NumberAsJSONNumber, ojson.NumberAsFloat64} {
+			fetched.SetOptions(ojson.Options{NumberMode: mode})
+			value, err := fetched.GetValue()
+			if err != nil {
+				t.Fatalf("materialize nonfinite scalar failed: %v", err)
+			}
+			number, ok := value.(float64)
+			if !ok {
+				t.Fatalf("nonfinite scalar = %T, want float64", value)
+			}
+			if test.want == `"Nan"` && !math.IsNaN(number) ||
+				test.want == `"Inf"` && !math.IsInf(number, 1) ||
+				test.want == `"-Inf"` && !math.IsInf(number, -1) {
+				t.Fatalf("nonfinite scalar = %v, want %v", number, test.value)
+			}
+			text, err := stdjson.Marshal(fetched)
+			if err != nil || string(text) != test.want {
+				t.Fatalf("marshal fetched scalar = (%s, %v), want %s", text, err, test.want)
+			}
+		}
+	}
 }
 
 // TestDriver_OSON_TimeTypes verifies OSON preserves the selected temporal
@@ -242,9 +287,9 @@ func TestDriver_OSON_Accessors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("access fetched document as object failed: %v", err)
 	}
-	items, ok := object.Get("items")
-	if !ok {
-		t.Fatal("fetched object does not contain items")
+	items, err := object.Get("items")
+	if err != nil {
+		t.Fatalf("Get() failed: %v", err)
 	}
 	array, err := items.AsJSONArray()
 	if err != nil {

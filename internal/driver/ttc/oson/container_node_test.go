@@ -70,13 +70,12 @@ func TestDecodeObjectAPI(t *testing.T) {
 		t.Fatalf("Keys() = %v, want %v", keys, want)
 	}
 	for _, key := range []string{"active", "name", "role"} {
-		if _, found := obj.Get(key); !found {
-			t.Errorf("Get(%q) found = false, want true", key)
+		if _, err := obj.Get(key); err != nil {
+			t.Errorf("Get(%q) error = %v", key, err)
 		}
 	}
-	if _, found := obj.Get("missing"); found {
-		t.Fatal("Get(missing) found = true, want false")
-	}
+	_, err = obj.Get("missing")
+	assertOracleErrorCode(t, err, oracleErrors.JSONObjectKeyNotFoundError)
 	got, err := obj.Value(drvCommon.JSONConversionOptions{})
 	if err != nil {
 		t.Fatalf("Value() error = %v", err)
@@ -99,9 +98,9 @@ func TestDecodeSecondaryDictionary(t *testing.T) {
 		t.Fatalf("root type = %T, want JSONObjectNode", root)
 	}
 	for key, want := range map[string]json.Number{osonLongKey: "1", "short": "2"} {
-		node, found := obj.Get(key)
-		if !found {
-			t.Fatalf("Get(%q) found = false, want true", key)
+		node, err := obj.Get(key)
+		if err != nil {
+			t.Fatalf("Get(%q) error = %v", key, err)
 		}
 		got, err := node.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber})
 		if err != nil {
@@ -114,8 +113,31 @@ func TestDecodeSecondaryDictionary(t *testing.T) {
 }
 
 // TestDecodeContainerNavigation verifies navigation and materialization of
-// nested objects and arrays.
+// nested objects and arrays, including their child-count prefixes.
 func TestDecodeContainerNavigation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		data   drvCommon.B1Array
+		opcode drvCommon.UB1
+	}{
+		{"empty", drvCommon.B1Array{0}, osonOpChildCountUB1},
+		{"one-byte count", drvCommon.B1Array{0xff}, osonOpChildCountUB1},
+		{"two-byte count", drvCommon.B1Array{0x01, 0x00}, osonOpChildCountUB2},
+		{"four-byte count", drvCommon.B1Array{0x00, 0x01, 0x00, 0x00}, osonOpChildCountUB4},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, kind := range []drvCommon.UB1{osonOpArrayType, osonOpObjectType} {
+				// Read past an opcode byte to verify nonzero-offset handling.
+				opcode := kind | test.opcode
+				buf := newOsonBuffer(append(drvCommon.B1Array{byte(opcode)}, test.data...))
+				_, _, err := readContainerCountAt(buf, 1, opcode)
+				if err != nil {
+					t.Fatalf("readContainerCountAt() error = %v", err)
+				}
+			}
+		})
+	}
+
 	root, err := Parse(sampleNestedObjectArray.oson)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
@@ -124,9 +146,9 @@ func TestDecodeContainerNavigation(t *testing.T) {
 	if !ok {
 		t.Fatalf("root type = %T, want JSONObjectNode", root)
 	}
-	itemsNode, found := obj.Get("items")
-	if !found {
-		t.Fatal("Get(items) found = false, want true")
+	itemsNode, err := obj.Get("items")
+	if err != nil {
+		t.Fatalf("Get(items) error = %v", err)
 	}
 	items, ok := itemsNode.(drvCommon.JSONArrayNode)
 	if !ok {
@@ -135,15 +157,13 @@ func TestDecodeContainerNavigation(t *testing.T) {
 	if got, want := items.Len(), 4; got != want {
 		t.Fatalf("items.Len() = %d, want %d", got, want)
 	}
-	if _, found := items.Get(-1); found {
-		t.Fatal("Get(-1) found = true, want false for a negative index")
+	for _, index := range []int{-1, items.Len()} {
+		_, err := items.Get(index)
+		assertOracleErrorCode(t, err, oracleErrors.JSONArrayIndexOutOfRangeError)
 	}
-	if _, found := items.Get(items.Len()); found {
-		t.Fatal("Get(len) found = true, want false for an out-of-range index")
-	}
-	first, found := items.Get(0)
-	if !found {
-		t.Fatal("Get(0) found = false, want the first item")
+	first, err := items.Get(0)
+	if err != nil {
+		t.Fatalf("Get(0) error = %v", err)
 	}
 	if got, err := first.GetValue(drvCommon.JSONConversionOptions{NumberMode: drvCommon.JSONNumberAsJSONNumber}); err != nil || got != json.Number("1") {
 		t.Fatalf("Get(0).GetValue() = %#v, %v; want json.Number(1)", got, err)
@@ -169,6 +189,26 @@ func TestDecodeContainerNavigation(t *testing.T) {
 // TestParseRejectsMalformedContainerTables verifies Parse rejects malformed
 // forms of container tables.
 func TestParseRejectsMalformedContainerTables(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		data   drvCommon.B1Array
+		opcode drvCommon.UB1
+	}{
+		{"truncated one-byte count", nil, osonOpChildCountUB1},
+		{"truncated two-byte count", drvCommon.B1Array{0x01}, osonOpChildCountUB2},
+		{"truncated four-byte count", drvCommon.B1Array{0x00, 0x01, 0x00}, osonOpChildCountUB4},
+		{"invalid count width", nil, osonOpChildSizeBits},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, kind := range []drvCommon.UB1{osonOpArrayType, osonOpObjectType} {
+				opcode := kind | test.opcode
+				buf := newOsonBuffer(append(drvCommon.B1Array{byte(opcode)}, test.data...))
+				_, _, err := readContainerCountAt(buf, 1, opcode)
+				assertOracleErrorCode(t, err, oracleErrors.InternalError)
+			}
+		})
+	}
+
 	badArray := sampleNestedArray.cloneOSON()
 	arrayHeader, err := newOsonHeader(newOsonBuffer(badArray))
 	if err != nil {
@@ -257,9 +297,8 @@ func TestParseRejectsInvalidChildOffset(t *testing.T) {
 	childOffset := obj.childrenOffsets["name"]
 	doc[childOffset] = byte(osonOpUpdateForwardUB2)
 	binary.BigEndian.PutUint16(doc[childOffset+1:], math.MaxUint16)
-	if _, found := obj.Get("name"); found {
-		t.Fatal("Get(name) found = true, want false for an invalid child redirect")
-	}
+	_, err = obj.Get("name")
+	assertOracleErrorCode(t, err, oracleErrors.InternalError)
 	if _, err := obj.Value(drvCommon.JSONConversionOptions{}); err == nil {
 		t.Fatal("Value() error = nil, want failure when an object child redirect is invalid")
 	}

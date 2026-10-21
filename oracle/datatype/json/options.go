@@ -48,6 +48,7 @@ const (
 	// for generic Oracle NUMBER and decimal values, and float64 for binary floats.
 	NumberDefault = drvCommon.JSONNumberDefault
 	// NumberAsJSONNumber returns finite JSON numbers as encoding/json.Number.
+	// Special binary floating-point values (NaN and ±Inf) remain float64.
 	NumberAsJSONNumber = drvCommon.JSONNumberAsJSONNumber
 	// NumberAsFloat64 converts JSON numbers to float64.
 	NumberAsFloat64 = drvCommon.JSONNumberAsFloat64

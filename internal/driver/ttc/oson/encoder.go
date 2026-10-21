@@ -69,7 +69,7 @@ const (
 // - drvCommon.B1Array containing the encoded OSON document.
 //
 // Errors:
-// - common.OsonEncodingError for an unsupported value or an OSON encoding/size limit failure.
+// - oracleErrors.OsonEncodingError for an unsupported value or an OSON encoding/size limit failure.
 func Encode(value any) (drvCommon.B1Array, error) {
 	return EncodeWithOptions(value, drvCommon.JSONConversionOptions{})
 }
@@ -180,7 +180,7 @@ func (enc *osonEncoder) encode(value any) (drvCommon.B1Array, error) {
 	kind, err := classifyJSONValue(value)
 	if err != nil {
 		common.Odl.Debug("osonEncoder.encode: failed", "error", err, "goType", fmt.Sprintf("%T", value))
-		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, err)
+		return nil, err
 	}
 	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
 		common.Odl.Finest("osonEncoder.encode: classified", "kind", kind)
@@ -347,7 +347,7 @@ func (enc *osonEncoder) collectFieldNames(value any) error {
 	kind, err := classifyJSONValue(value)
 	if err != nil {
 		common.Odl.Debug("osonEncoder.collectFieldNames: failed", "error", err, "goType", fmt.Sprintf("%T", value))
-		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
+		return err
 	}
 	if kind == drvCommon.KindScalar {
 		return nil
@@ -471,7 +471,7 @@ func (enc *osonEncoder) writeNode(tree *osonWriteBuffer, value any, childOffsetS
 	kind, err := classifyJSONValue(value)
 	if err != nil {
 		common.Odl.Debug("osonEncoder.writeNode: failed", "error", err, "goType", fmt.Sprintf("%T", value))
-		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
+		return err
 	}
 	switch kind {
 	case drvCommon.KindScalar:
@@ -736,10 +736,13 @@ func writeOracleNumberPayload(tree *osonWriteBuffer, payload drvCommon.B1Array) 
 func (enc *osonEncoder) writeStringNumber(tree *osonWriteBuffer, value string) error {
 	// Validate the JSON number string.
 	value = strings.TrimSpace(value)
-	var number stdjson.Number
-	if value == "" || stdjson.Unmarshal([]byte(value), &number) != nil || number == "" {
-		common.Odl.Debug("osonEncoder.writeStringNumber: failed", "reason", "invalid JSON number text", "length", len(value))
+	if value == "" {
+		common.Odl.Debug("osonEncoder.writeStringNumber: failed", "reason", "empty JSON number text")
 		return common.NewOracleError(oracleErrors.OsonEncodingError, nil)
+	}
+	if _, err := stdjson.Marshal(stdjson.Number(value)); err != nil {
+		common.Odl.Debug("osonEncoder.writeStringNumber: failed", "reason", "invalid JSON number text", "length", len(value))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 
 	raw := []byte(value)
