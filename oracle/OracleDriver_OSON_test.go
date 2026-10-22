@@ -336,8 +336,11 @@ func TestDriver_OSON_NullDistinction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create JSON null document failed: %v", err)
 	}
-	if _, err = db.ExecContext(ctx, "insert into "+table+" (id, doc) values (1, :1), (2, null)", jsonNull); err != nil {
-		t.Fatalf("insert JSON and SQL null values failed: %v", err)
+	if _, err = db.ExecContext(ctx, "insert into "+table+" (id, doc) values (1, :1)", jsonNull); err != nil {
+		t.Fatalf("insert JSON null value failed: %v", err)
+	}
+	if _, err = db.ExecContext(ctx, "insert into "+table+" (id, doc) values (2, null)"); err != nil {
+		t.Fatalf("insert SQL null value failed: %v", err)
 	}
 
 	// sql.Null retains the database NULL distinction that JSON itself cannot
