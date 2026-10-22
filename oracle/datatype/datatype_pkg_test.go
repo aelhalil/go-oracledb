@@ -46,10 +46,8 @@ import (
 	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-// TestMain initializes the package test configuration before running tests.
 func TestMain(m *testing.M) {
-	err := oracleTest.InitConfig()
-	if err != nil {
+	if err := oracleTest.InitConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
 		os.Exit(1)
 	}
