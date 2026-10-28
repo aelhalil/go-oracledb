@@ -632,7 +632,8 @@ func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) error 
 	case drvCommon.JSONTimeAsDate:
 		payload, err := converters.EncodeDate(value)
 		if err != nil {
-			return err
+			common.Odl.Debug("osonEncoder.writeTime: failed", "reason", "encode Oracle DATE", "error", err)
+			return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 		}
 		tree.writeUB1(osonOpDate)
 		tree.writeBytes(payload)
@@ -640,7 +641,8 @@ func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) error 
 	case drvCommon.JSONTimeAsTimestampTZ:
 		payload, err := encodeTimestampTZ(value)
 		if err != nil {
-			return err
+			common.Odl.Debug("osonEncoder.writeTime: failed", "reason", "encode Oracle TIMESTAMP WITH TIME ZONE", "error", err)
+			return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 		}
 		tree.writeUB1(osonOpTimestampTZ)
 		tree.writeBytes(payload)
@@ -650,7 +652,8 @@ func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) error 
 	// Timestamp
 	payload, err := converters.EncodeTimestamp(value)
 	if err != nil {
-		return err
+		common.Odl.Debug("osonEncoder.writeTime: failed", "reason", "encode Oracle TIMESTAMP", "error", err)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 	tree.writeUB1(osonOpTimestamp)
 	tree.writeBytes(payload)
