@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // signedDate is the first 7 bytes from the reference payload used in the
@@ -232,6 +233,51 @@ func TestDateEncode(t *testing.T) {
 			want := b1(tt.want)
 			if !bytes.Equal([]byte(got), []byte(want)) {
 				t.Fatalf("DATE encode mismatch for %s:\n got %v\nwant %v", tt.name, got, want)
+			}
+		})
+	}
+}
+
+// TestDateEncode_YearValidation verifies Oracle DATE year bounds are inclusive
+// and invalid years return ORA-01841.
+func TestDateEncode_YearValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		year    int
+		wantErr oracleErrors.ErrorCode
+	}{
+		{name: "zero", year: 0, wantErr: oracleErrors.InvalidDateYear},
+		{name: "below minimum", year: _minOracleDateYear - 1, wantErr: oracleErrors.InvalidDateYear},
+		{name: "above maximum", year: _maxOracleDateYear + 1, wantErr: oracleErrors.InvalidDateYear},
+		{name: "minimum", year: _minOracleDateYear},
+		{name: "maximum", year: _maxOracleDateYear},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payload, err := EncodeDate(time.Date(test.year, time.January, 1, 0, 0, 0, 0, time.UTC))
+			if test.wantErr != "" {
+				if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(test.wantErr) {
+					t.Fatalf("EncodeDate() error = %v, want %s", err, test.wantErr)
+				}
+				if test.year == 0 {
+					const wantMessage = "ORA-01841 - (full) year must be between -4713 and +9999, and not be 0"
+					if err.Error() != wantMessage {
+						t.Fatalf("EncodeDate() error = %q, want %q", err, wantMessage)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("EncodeDate() error = %v, want nil", err)
+			}
+
+			// check back the year
+			if len(payload) != _dateLength {
+				t.Fatalf("EncodeDate() payload length = %d, want %d", len(payload), _dateLength)
+			}
+			gotYear := (int(payload[0])-_centuryBias)*_yearsPerCentury + int(payload[1]) - _yearBias
+			if gotYear != test.year {
+				t.Fatalf("encoded year = %d, want %d", gotYear, test.year)
 			}
 		})
 	}
