@@ -111,9 +111,6 @@ func DecodeDate(b driverCommon.B1Array) (time.Time, error) {
 	hour := int(b[4]) - _hourBias
 	minute := int(b[5]) - _minuteBias
 	second := int(b[6]) - _secondBias
-	if year <= 0 {
-		return time.Time{}, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, "DATE", "Decode", driverCommon.ReasonInvalidValue, year)
-	}
 	// Build time in local zone; adjust as needed by callers.
 	return time.Date(year, month, day, hour, minute, second, 0, time.Local), nil
 }

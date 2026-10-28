@@ -127,8 +127,8 @@ func assertDateTimeWithOffset(t *testing.T, got time.Time, want time.Time, wantO
 	}
 }
 
-// TestDateDecode exercises Date.Decode with a range of representative payloads
-// including mid-range, end-of-day, and lower-bound calendar values.
+// TestDateDecode exercises Date.Decode with representative payloads, including
+// mid-range, end-of-day, lower-bound, and BC calendar values.
 func TestDateDecode(t *testing.T) {
 	t.Parallel()
 
@@ -141,6 +141,7 @@ func TestDateDecode(t *testing.T) {
 		| mid-range reference| 120 124 1 15 1 1 1            | 2024-01-15 00:00:00 Local              |
 		| end-of-day         | 119 199 12 31 24 60 60        | 1999-12-31 23:59:59 Local              |
 		| year-one           | 100 101 1 1 1 1 1             | 0001-01-01 00:00:00 Local              |
+		| BC year-one        | 100 99 1 1 1 1 1              | year -1, 0001-01-01 00:00:00 Local     |
 		+--------------------+--------------------------------+---------------------------------------+
 	*/
 
@@ -163,6 +164,11 @@ func TestDateDecode(t *testing.T) {
 			name:    "year-one",
 			payload: signedDateYearOne,
 			want:    time.Date(1, time.January, 1, 0, 0, 0, 0, time.Local),
+		},
+		{
+			name:    "bc-year-one",
+			payload: []int{100, 99, 1, 1, 1, 1, 1},
+			want:    time.Date(-1, time.January, 1, 0, 0, 0, 0, time.Local),
 		},
 	}
 
