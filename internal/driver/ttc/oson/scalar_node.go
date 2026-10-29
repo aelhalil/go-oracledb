@@ -612,16 +612,31 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 	}
 }
 
-// decodeSignedIntegerValue decodes an SB4 or SB8 Oracle NUMBER using the
-// signed integer type associated with its OSON opcode family.
+// decodeSignedIntegerValue decodes an integer-valued SB4 or SB8 Oracle NUMBER
+// using the signed integer type associated with its OSON opcode family.
 func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts drvCommon.JSONConversionOptions) (any, error) {
 	text, err := converters.DecodeExactDecimalAsString(payload)
 	if err != nil {
 		return nil, err
 	}
 
-	// take only decimal part
-	integerText, _, truncated := strings.Cut(text, ".")
+	integerText, _, hasFraction := strings.Cut(text, ".")
+	if hasFraction {
+		common.Odl.Debug(
+			"decodeSignedIntegerValue: failed",
+			"reason", "Oracle NUMBER has a fractional part",
+			"numberLength", len(text),
+		)
+		return nil, common.NewOracleError(
+			oracleErrors.ConverterExpectedFormat,
+			nil,
+			"NUMBER",
+			"Decode",
+			drvCommon.ReasonInvalidFormat,
+			"integer",
+		)
+	}
+
 	value, err := strconv.ParseInt(integerText, 10, 64)
 	if err != nil {
 		if parseErr, ok := err.(*strconv.NumError); ok &&
@@ -671,14 +686,6 @@ func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts
 			drvCommon.ReasonOutOfRange,
 			minInt32,
 			maxInt32,
-		)
-	}
-
-	// report truncated
-	if truncated {
-		common.Odl.Warn(
-			"decodeSignedIntegerValue: fractional Oracle NUMBER truncated",
-			"numberLength", len(text),
 		)
 	}
 
