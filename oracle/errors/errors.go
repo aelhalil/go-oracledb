@@ -252,6 +252,13 @@ const (
 	// the wanted provider type
 	ProviderNotFound ErrorCode = "OGD-00206"
 
+	// DeepDataSecurityNotSupported indicates that the server cannot receive end-user security contexts.
+	DeepDataSecurityNotSupported ErrorCode = "OGD-00400"
+	// InvalidEndUserSecurityContext indicates that an end-user security context is
+	// nil, contains missing or invalid credentials, conflicting identity fields,
+	// invalid roles or attributes, or exceeds the supported size limit.
+	InvalidEndUserSecurityContext ErrorCode = "OGD-00402"
+
 	// JSONUninitializedValue indicates a public oracle/datatype/json API was called on an uninitialized receiver.
 	JSONUninitializedValue ErrorCode = "OGD-00300"
 	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/datatype/json does not accept.

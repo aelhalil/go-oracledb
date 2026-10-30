@@ -136,7 +136,8 @@ const (
 	kpccapCtbTtc5FlexTxn           = "KPCCAP_CTB_TTC5_FLEX_TXN"
 	kpccapCtbTtc5CqnPull           = "KPCCAP_CTB_TTC5_CQN_PULL"
 	kpccapCtbTtc5PdbParams         = "KPCCAP_CTB_TTC5_PDB_PARAMS"
-	kpccapCtbTtcspareAltsess       = "KPCCAP_CTB_TTCSPARE_ALTSESS"
+	kpccapCtbTtcspareAltsess       = "KPCCAP_CTB_BACKPORT_FEATURE1"
+	kpccapCtbBackportFeature1Xsctx = "KPCCAP_CTB_BACKPORT_FEATURE1_XSCTX"
 	kpccapCtbFeatureBackportSpare2 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE2"
 	kpccapCtbFeatureBackportSpare3 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE3"
 	kpccapCtbFeatureBackportSpare4 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE4"
@@ -281,6 +282,7 @@ func newCapabilityMetadata() *capability {
 			kpccapCtbTtc5CqnPull:           {index: 44, value: 0x40, isFlag: true, isDefault: true}, // supports CQN pull model
 			kpccapCtbTtc5PdbParams:         {index: 44, value: 0x80, isFlag: true, isDefault: true}, // container params
 			kpccapCtbTtcspareAltsess:       {index: 45, value: 0x01, isFlag: true, isDefault: true}, // understands alter session pbk
+			kpccapCtbBackportFeature1Xsctx: {index: 45, value: 0x02, isFlag: true, isDefault: true}, // supports OXSCTX piggyback
 			kpccapCtbFeatureBackportSpare2: {index: 46, value: 0x00, isFlag: true, isDefault: true},
 			kpccapCtbFeatureBackportSpare3: {index: 47, value: 0x00, isFlag: true, isDefault: true},
 			kpccapCtbFeatureBackportSpare4: {index: 48, value: 0x00, isFlag: true, isDefault: true},

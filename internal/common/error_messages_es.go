@@ -206,6 +206,7 @@ func initMessagesEs() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "clave privada del token firmado no válida"},
 		{oracleErrors.ExpiredToken, "el token de acceso ha caducado"},
 		{oracleErrors.ProviderNotFound, "no se encontró ningún proveedor del tipo solicitado"},
+		{oracleErrors.InvalidEndUserSecurityContext, "contexto de seguridad del usuario final no válido"},
 	}
 
 	for _, translation := range translations {

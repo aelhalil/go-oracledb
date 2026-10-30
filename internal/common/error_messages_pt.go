@@ -206,6 +206,7 @@ func initMessagesPt() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "chave privada de token assinado inválida"},
 		{oracleErrors.ExpiredToken, "o token de acesso expirou"},
 		{oracleErrors.ProviderNotFound, "nenhum provedor do tipo solicitado foi encontrado"},
+		{oracleErrors.InvalidEndUserSecurityContext, "contexto de segurança do usuário final inválido"},
 	}
 
 	for _, translation := range translations {

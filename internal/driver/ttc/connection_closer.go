@@ -68,6 +68,9 @@ func (c *connection) Close() error {
 	// server. So we just drain the list of statements
 	_ = c.shelf.GetStatements(true)
 
+	// clear end-user sec context
+	c.ClearEndUserSecurityContext()
+
 	// Close the TTC connection.
 	ttcCloseErr := c._closeTTCConnection(ctx)
 

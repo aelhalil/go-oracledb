@@ -93,6 +93,7 @@ func newConnection(
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
 		return nil, err
 	}
+	conn.shelf._deepDataSecurity = &deepDataSecurity{connection: conn}
 	return conn, nil
 }
 
