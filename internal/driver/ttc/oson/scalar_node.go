@@ -620,7 +620,7 @@ func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts
 		return nil, err
 	}
 
-	integerText, _, hasFraction := strings.Cut(text, ".")
+	_, _, hasFraction := strings.Cut(text, ".")
 	if hasFraction {
 		common.Odl.Debug(
 			"decodeSignedIntegerValue: failed",
@@ -637,7 +637,7 @@ func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts
 		)
 	}
 
-	value, err := strconv.ParseInt(integerText, 10, 64)
+	value, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
 		if parseErr, ok := err.(*strconv.NumError); ok &&
 			parseErr.Err == strconv.ErrRange {
@@ -676,7 +676,7 @@ func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts
 		common.Odl.Debug(
 			"decodeSignedIntegerValue: failed",
 			"reason", "Oracle NUMBER is outside signed 32-bit range",
-			"numberLength", len(text),
+			"number", text,
 		)
 		return nil, common.NewOracleError(
 			oracleErrors.ConverterRange,
@@ -691,7 +691,7 @@ func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts
 
 	switch opts.NumberMode {
 	case drvCommon.JSONNumberAsJSONNumber:
-		return json.Number(integerText), nil
+		return json.Number(text), nil
 	case drvCommon.JSONNumberAsFloat64:
 		return float64(value), nil
 	}
